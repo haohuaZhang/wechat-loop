@@ -1,3 +1,11 @@
+# ── 本地工具链（venv + chromium，由 bootstrap.sh 生成） ──
+.toolchain/
+tools/gate/activate.sh
+tools/gate/.bootstrap_stamp
+
+# ── 登录产物（二维码/凭证状态，绝对不能推） ──
+loop/.login/
+
 # ── Python ──
 __pycache__/
 *.py[cod]
@@ -16,13 +24,17 @@ build/
 loop/*cookies*
 loop/*storage*
 loop/*token*
-loop/knowledge_base.json.bak  # 备份文件不推
+# 备份文件不推
+loop/knowledge_base.json.bak
 
 # ── 其他 json（cookies/storage_state 等，绝对不能推） ──
-*.json  # 默认排除所有 json
+# 默认排除所有 json
+*.json
 # 放行：运行时 KB/history
 !loop/history.json
 !loop/knowledge_base.json
+# 放行：run_daily 每次产物（evidence_pack / topic_candidates）
+!loop/runs/**/*.json
 # 放行：scripts 目录下配置 json
 !scripts/*.json
 !scripts/*.json.example
@@ -51,7 +63,8 @@ ctx_meta.json
 # ── IDE ──
 .vscode/
 .idea/
-.trae/  # 工作区 .trae 可能有 personal skill
+# 工作区 .trae 可能有 personal skill
+.trae/
 .trae/skills/
 
 # ── 系统 ──

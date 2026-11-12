@@ -8,7 +8,7 @@
 
 ## 0. 一句话定位
 
-**把自己运营的微信公众号文章作为知识库，自动选题 → 写作 → 排版 → 入草稿箱，人工审核后发出去。零 API 花费、本地跑完闭环。**
+**把指定公众号（可多个，不限于自己运营的号）的历史文章采集为知识库，自动检索 → 选题去重 → 写作 → 排版 → 入草稿箱，人工审核后发出去。采集层基于 `wechat-digest-skill` 二次开发，零 API 花费、本地跑完闭环。**
 
 ---
 
@@ -21,7 +21,7 @@
 | `wechat-loop/` | 本次主仓库 | **适配层 + 自动化闭环** | 11 个 Python 脚本，500 行左右。唯一有我们新写代码的地方 |
 | `wechat-flow/` | 上游克隆（只读） | **写作规范 + 排版 + 发布工具链** | **没有 LLM 调用代码**，写作是 Agent 读 `SKILL.md` 完成的。提供 `converter.py` 把 md 转 inline-style HTML |
 | `wechat-flow-film/` | 上游二创（只读） | **浏览器自动化 + 关键词模块** | 登录可用（Playwright chromium），有完整的 `keyword.py`（日期自动回复）。发布部分未实测加固 |
-| `wechat-digest-skill/` | 上游克隆（只读） | **采集 + 离线 HTML** | **没有检索、没有写作**。中间层就是 wechat-loop 里的 11 个脚本 |
+| `wechat-digest-skill/` | 上游克隆（只读） | **采集 + 离线 HTML** | **没有检索、没有写作**。本项目的采集逻辑基于它二次开发，知识库来源是**目标公众号的历史文章**（可以不是自己号）。中间层就是 wechat-loop 里的 11 个脚本 |
 
 **契约**：`wechat-loop/loop/knowledge_base.json` 和 `wechat-loop/loop/runs/YYYYMMDD/` 是唯一的数据入口。
 
@@ -190,11 +190,12 @@ python3 auth.py login
 ```bash
 cd /workspace/wechat-loop
 
-# 采集自己号（走 material API）
-# 需要：WECHAT_APPID + WECHAT_APPSECRET（公众号后台 → 开发 → 基本配置）
-python3 scripts/collect.py self --count 20
+# 采集目标公众号历史文章（知识库主路径，需要 mp 后台 token + cookie）
+# 先跑 auth.py login 扫码，cookies.json 落盘后自动读取
+python3 scripts/collect.py "目标公众号名称" --count 20 --since 2026-01-01
 
-# 或用 token+cookie 方式（不用 AppID/Secret，直接用扫码后的 cookies.json）
+# 自己号（可选，只用于复盘自己发过的内容）
+# 需要：WECHAT_APPID + WECHAT_APPSECRET（公众号后台 → 开发 → 基本配置）
 python3 scripts/collect.py self --count 20
 ```
 

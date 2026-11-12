@@ -19,10 +19,10 @@ if [[ "$PY_OK" != "yes" ]]; then
 fi
 echo "✅ Python $PYVER OK"
 
-# 2. 依赖
+# 2. 依赖（装到可复用工具链里，重复运行会秒退）
 echo "安装 Python 依赖..."
-pip install --quiet playwright trafilatura beautifulsoup4 markdown cssutils Pygments \
-    pyyaml apscheduler pillow pydantic python-dotenv requests 2>&1 | tail -3
+bash tools/gate/bootstrap.sh
+source tools/gate/activate.sh
 
 # 3. 上游仓库检查
 for repo in wechat-flow wechat-flow-film; do
@@ -51,6 +51,9 @@ COOKIE_FILE=/workspace/wechat-flow-film/cookies.json
 # 默认主题 & 人格（Agent 写作时可能覆盖）
 DEFAULT_THEME=sspai
 DEFAULT_PERSONA=industry-observer
+
+# 每日日期关键词自动回复的内容（set_keyword.py 使用，留空则该脚本直接报错）
+WECHAT_KEYWORD_REPLY=
 ENV
     echo "✅ 已生成 config.env — 请按需填 DRAFT_ROUTE / AppID / Cookie"
 else

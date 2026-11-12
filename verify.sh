@@ -10,6 +10,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+# 复用 bootstrap.sh 装好的工具链（有就切，没有就继续用系统 Python）
+[[ -f "$ROOT/tools/gate/activate.sh" ]] && source "$ROOT/tools/gate/activate.sh"
+
 PASS=0
 FAIL=0
 WARN=0
@@ -51,6 +54,10 @@ bash -n scripts/run_daily.sh 2>/dev/null && pass "run_daily.sh 语法 OK" || fai
 # extract_exemplar --list（不依赖外部网络）
 python3 scripts/extract_exemplar.py --list >/dev/null 2>&1 \
     && pass "extract_exemplar.py" || fail "extract_exemplar.py"
+
+# wizard_server --help（纯标准库，只解析参数不启动服务）
+python3 scripts/wizard_server.py --help >/dev/null 2>&1 \
+    && pass "wizard_server.py" || fail "wizard_server.py"
 
 # ── 3. 上游依赖检查 ──────────────────────────────────────────
 echo ""

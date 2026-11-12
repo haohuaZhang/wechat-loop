@@ -12,6 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT"
 
+# 复用 bootstrap.sh 装好的工具链（有就切，没有就继续用系统 Python）
+[[ -f "$ROOT/tools/gate/activate.sh" ]] && source "$ROOT/tools/gate/activate.sh"
+
 # ── 参数解析 ────────────────────────────────────────────────
 DATE_TAG=""
 TOPIC=""

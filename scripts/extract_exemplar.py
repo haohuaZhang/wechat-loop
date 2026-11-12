@@ -16,15 +16,23 @@ import re
 import sys
 from pathlib import Path
 
-import trafilatura
-
 EXEMPLAR_DIR = Path(__file__).resolve().parent.parent / "loop" / "exemplars"
+
+
+def _trafilatura():
+    """lazy import — 只在实际抓取正文时需要，--list 不依赖它。"""
+    try:
+        import trafilatura  # noqa: F401
+    except ImportError as e:
+        raise RuntimeError("缺少依赖 trafilatura —— 运行: pip install trafilatura") from e
+    return trafilatura
 
 
 def extract(url_or_path: str) -> dict:
     """从 URL 或本地文件提取正文。返回 {title, text, source}。"""
     source = url_or_path
     if url_or_path.startswith(("http://", "https://")):
+        trafilatura = _trafilatura()
         downloaded = trafilatura.fetch_url(url_or_path)
         if downloaded is None:
             raise RuntimeError(f"无法抓取 {url_or_path}（可能需要 cookie）")
@@ -42,6 +50,7 @@ def extract(url_or_path: str) -> dict:
             title_match = re.search(r"^#\s+(.+)$", raw, re.M)
             title = title_match.group(1).strip() if title_match else ""
         else:
+            trafilatura = _trafilatura()
             text = trafilatura.extract(raw, include_comments=False, include_tables=False) or raw
             title_match = re.search(r"<title[^>]*>([^<]+)</title>", raw, re.I)
             title = title_match.group(1).strip() if title_match else ""
