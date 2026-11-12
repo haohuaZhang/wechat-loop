@@ -1,0 +1,8 @@
+/workspace/wechat-loop/scripts/simple_search.py:23: SyntaxWarning: "\-" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\-"? A raw string is also an option.
+  _PUNCT = re.compile(r"[\s，。！？、；：""''（）《》…—\-/\n\t]+")
+证据包已写入 loop/runs/20261111/evidence_pack.json，共 1 条
+证据包已写入 loop/runs/20261111/evidence_pack.json，共 0 条
+usage: topic_selection.py [-h] [--top-n TOP_N] [--min-score MIN_SCORE]
+                          [--output OUTPUT]
+topic_selection.py: error: unrecognized arguments: --kb loop/knowledge_base.json
+prompt 已写入 loop/runs/20261111/.prompt

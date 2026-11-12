@@ -7,17 +7,25 @@ dist/
 build/
 .eggs/
 
-# ── 运行时产物 ──
-loop/runs/
-loop/history.json
-loop/knowledge_base.json  # 第一次采集才生成，留空让 collect.py 初始化
-loop/kb/*/
-!loop/kb/.gitkeep
+# ── 运行时产物（放行，新账户接手需要） ──
+# loop/runs/       ✅ 放行 — run_daily 每次的产物
+# loop/history.json ✅ 放行 — 去重用
+# loop/knowledge_base.json ✅ 放行 — demo KB 初始数据
+# loop/kb/*/       ✅ 放行 — 采集样本
+# ── 但 cookies/token 类 json 绝对不能进 ──
+loop/*cookies*
+loop/*storage*
+loop/*token*
+loop/knowledge_base.json.bak  # 备份文件不推
 
-# ── cookies / 登录态（绝对不能推） ──
-*.json  # 所有 cookies/storage_state 都是 .json
+# ── 其他 json（cookies/storage_state 等，绝对不能推） ──
+*.json  # 默认排除所有 json
+# 放行：运行时 KB/history
+!loop/history.json
+!loop/knowledge_base.json
+# 放行：scripts 目录下配置 json
 !scripts/*.json
-!loop/*.json.example
+!scripts/*.json.example
 
 # ── env / token ──
 config.env
@@ -35,7 +43,7 @@ login-page.png
 ctx_meta.json
 *.tmp
 
-# ── 上游依赖（各自独立 git 仓库，不要嵌套提交） ──
+# ── 上游依赖（各自独立 git 仓库，不嵌套提交，打包当 release asset） ──
 /wechat-flow/
 /wechat-flow-film/
 /wechat-digest-skill/
@@ -43,7 +51,7 @@ ctx_meta.json
 # ── IDE ──
 .vscode/
 .idea/
-.trae/  # 工作区 .trae 里可能有 personal skill，不推
+.trae/  # 工作区 .trae 可能有 personal skill
 .trae/skills/
 
 # ── 系统 ──

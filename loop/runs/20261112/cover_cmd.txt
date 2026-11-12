@@ -1,0 +1,2 @@
+# 待生成 — 等 Agent 写好 article.md 后:
+python3 scripts/make_cover.py -t "标题" -s "副标题" -o loop/runs/20261112/cover.png
