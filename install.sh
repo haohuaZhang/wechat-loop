@@ -51,6 +51,9 @@ COOKIE_FILE=/workspace/wechat-flow-film/cookies.json
 # 默认主题 & 人格（Agent 写作时可能覆盖）
 DEFAULT_THEME=sspai
 DEFAULT_PERSONA=industry-observer
+
+# 每日日期关键词自动回复的内容（set_keyword.py 使用，留空则该脚本直接报错）
+WECHAT_KEYWORD_REPLY=
 ENV
     echo "✅ 已生成 config.env — 请按需填 DRAFT_ROUTE / AppID / Cookie"
 else
