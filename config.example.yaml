@@ -1,0 +1,49 @@
+# wechat-loop 配置 — 复制一份改名为 config.yaml
+# 凭证不入 git，确保 .gitignore 里包含 config.yaml
+
+# ── 公众号 ──────────────────────────────────────────────
+wechat:
+  account_name: "蒙西求职记"
+  # 轨 A（官方 API）需要 AppID/Secret。家庭动态 IP 建议走轨 B 免 IP 白名单
+  appid: ""        # wx 开头
+  secret: ""       # 只显示一次，丢了要重置
+  biz: ""          # Mzxxxxxx== 格式，自己号主页 URL 里能看到
+
+# ── 轨选择 ──────────────────────────────────────────────
+# api: 官方 API（稳定但需要 IP 白名单 + AppSecret）
+# playwright: 浏览器自动化（零额外凭证，复用 wechat-flow-film auth.py）
+draft_route: "playwright"
+
+# ── 采集 ──────────────────────────────────────────────
+collection:
+  # 自己号用永久素材 API（更稳）
+  self_source: "material_api"
+  # 竞品号走 mp.weixin.qq.com 翻页
+  peer_sources:
+    - biz: ""      # Mzxxxxxx==
+      name: "晚点 LatePost"
+      since: "2025-01-01"
+      per_run: 15
+
+# ── 检索 ──────────────────────────────────────────────
+search:
+  top_k: 5
+  min_score: 0.1
+
+# ── 排版 ──────────────────────────────────────────────
+format:
+  # 可选主题见 wechat-flow/toolkit/themes/*.yaml
+  theme: "professional-clean"
+  # 备选: sspai / minimal / midnight / tech-modern / warm-editorial
+
+# ── 封面 ──────────────────────────────────────────────
+cover:
+  size: "900x383"       # 公众号官方封面比例
+  palette: "dark-teal-gold"
+
+# ── 调度 ──────────────────────────────────────────────
+schedule:
+  daily_hour: 8
+  daily_minute: 0
+  # cron 触发后留多少秒给 Agent review
+  agent_review_timeout_sec: 600

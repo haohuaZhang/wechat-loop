@@ -1,0 +1,51 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── 运行时产物 ──
+loop/runs/
+loop/history.json
+loop/knowledge_base.json  # 第一次采集才生成，留空让 collect.py 初始化
+loop/kb/*/
+!loop/kb/.gitkeep
+
+# ── cookies / 登录态（绝对不能推） ──
+*.json  # 所有 cookies/storage_state 都是 .json
+!scripts/*.json
+!loop/*.json.example
+
+# ── env / token ──
+config.env
+.env
+*.token
+
+# ── 浏览器 profile ──
+.chrome-profile/
+.chrome-ide-profile/
+browser_pid.txt
+
+# ── 临时文件 ──
+login-qrcode*.png
+login-page.png
+ctx_meta.json
+*.tmp
+
+# ── 上游依赖（各自独立 git 仓库，不要嵌套提交） ──
+/wechat-flow/
+/wechat-flow-film/
+/wechat-digest-skill/
+
+# ── IDE ──
+.vscode/
+.idea/
+.trae/  # 工作区 .trae 里可能有 personal skill，不推
+.trae/skills/
+
+# ── 系统 ──
+.DS_Store
+Thumbs.db
