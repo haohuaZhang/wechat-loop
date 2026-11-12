@@ -66,6 +66,40 @@ def proxy_from_env():
     return None
 
 
+BROWSER_CHANNELS = ("chrome", "msedge")
+
+
+def launch_browser(p):
+    """优先驱动本机已安装的 Chrome / Edge，最后才回退到 Playwright 自带 chromium。
+
+    本地版不给用户额外下载 100+MB 浏览器；沙箱里没有系统浏览器时自动回退。
+    """
+    preferred = os.environ.get("WECHAT_BROWSER_CHANNEL", "").strip()
+    channels = []
+    if preferred:
+        channels.append(preferred)
+    channels.extend(c for c in BROWSER_CHANNELS if c not in channels)
+    channels.append(None)  # 内置 chromium
+
+    last_error = None
+    for channel in channels:
+        kwargs = {"headless": True, "proxy": proxy_from_env()}
+        if channel:
+            kwargs["channel"] = channel
+        try:
+            browser = p.chromium.launch(**kwargs)
+            print(f"使用浏览器：{channel or '内置 chromium'}", flush=True)
+            return browser
+        except Exception as exc:
+            last_error = exc
+            first_line = str(exc).strip().splitlines()[0][:120] if str(exc).strip() else exc.__class__.__name__
+            print(f"  · {channel or '内置 chromium'} 不可用：{first_line}", flush=True)
+    raise SystemExit(
+        "找不到可用浏览器。请安装 Google Chrome（推荐）或 Microsoft Edge；"
+        "也可设置 WECHAT_BROWSER_CHANNEL=chrome / msedge 指定。\n"
+        f"最后一个错误：{last_error}")
+
+
 def save_qr(page):
     """尽量只截二维码区域，找不到就截整页。"""
     os.makedirs(LOGIN_DIR, exist_ok=True)
@@ -112,11 +146,11 @@ def main():
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        sys.exit("缺少 playwright：请先运行 bash tools/gate/bootstrap.sh")
+        sys.exit("缺少 playwright：请重新运行启动脚本，它会自动安装依赖")
 
     write_status(status="starting")
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, proxy=proxy_from_env())
+        browser = launch_browser(p)
         context = browser.new_context(
             user_agent=UA, viewport={"width": 1280, "height": 900}, locale="zh-CN")
         page = context.new_page()

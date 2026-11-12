@@ -22,6 +22,7 @@ import subprocess
 import sys
 import threading
 import time
+import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -546,11 +547,15 @@ def main():
         prog="wizard_server.py", description="公众号采集本地向导（网页版）")
     ap.add_argument("--host", default="127.0.0.1", help="监听地址（默认 127.0.0.1）")
     ap.add_argument("--port", type=int, default=8787, help="端口（默认 8787）")
+    ap.add_argument("--open", action="store_true", help="启动后自动用浏览器打开向导页")
     args = ap.parse_args()
 
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"向导已启动： http://{args.host}:{args.port}/")
+    url = f"http://{args.host}:{args.port}/"
+    print(f"向导已启动： {url}")
     print("按 Ctrl+C 退出。")
+    if args.open:
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
