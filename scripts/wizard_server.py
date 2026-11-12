@@ -79,6 +79,32 @@ def freq_remaining():
         return 0
 
 
+def parse_url_sources(text):
+    """把用户粘贴的内容拆成 (文章链接, RSS/Atom 地址, XML 原文)。
+
+    - 每行一个 mp 文章链接；
+    - 每行一个 RSS/Atom 订阅地址（非 mp 的 http(s) 链接）；
+    - 或者整段 OPML/RSS XML（直接写成文件交给 collector 解析）。
+    """
+    text = (text or "").strip()
+    if re.search(r"<opml[\s>]|<rss[\s>]", text, re.I):
+        return [], [], text
+    mp_links, rss, seen = [], [], set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        for u in MP_LINK_RE.findall(line):
+            if u not in seen:
+                seen.add(u)
+                mp_links.append(u)
+        if not re.match(r"^https?://mp\.weixin\.qq\.com/s", line):
+            if re.match(r"^https?://", line) and line not in seen:
+                seen.add(line)
+                rss.append(line)
+    return mp_links, rss, ""
+
+
 # ════════════════════════════════════════════════════════════════
 #  子进程管理（登录 / 采集各一个，日志留尾部）
 # ════════════════════════════════════════════════════════════════
@@ -286,11 +312,11 @@ PAGE = """<!DOCTYPE html>
 
   <section class="card" id="card-urls">
     <h2><span class="step">备</span>限流了？用文章链接也能采</h2>
-    <div class="note">手机微信打开文章 → 右上角「…」→「复制链接」，一行一个粘贴到下面。这条路直接打开文章页抓正文，不经过被限流的列表接口。</div>
-    <textarea id="urls" rows="4" placeholder="https://mp.weixin.qq.com/s/xxxxxxxx&#10;https://mp.weixin.qq.com/s/yyyyyyyy"></textarea>
+    <div class="note">手机微信打开文章 → 右上角「…」→「复制链接」，一行一个粘贴到下面；也可以直接贴 RSS/Atom 订阅地址或 OPML 内容。这条路直接打开文章页抓正文，不经过被限流的列表接口。</div>
+    <textarea id="urls" rows="4" placeholder="https://mp.weixin.qq.com/s/xxxxxxxx&#10;https://example.com/wechat-feed.xml（RSS 订阅源也行）"></textarea>
     <div class="row" style="margin-top:12px">
       <button id="btn-urls" disabled>用链接采集</button>
-      <span class="note" id="urls-note" style="margin-top:0">已识别 0 个链接</span>
+      <span class="note" id="urls-note" style="margin-top:0">已识别 0 篇文章</span>
     </div>
   </section>
 
@@ -392,14 +418,18 @@ $('btn-collect').onclick = startCollect;
 
 // ── 备用：粘贴文章链接采集（不走列表接口）───────────────
 $('urls').addEventListener('input', () => {
-  const n = $('urls').value.split('\\n')
-    .filter(u => u.indexOf('mp.weixin.qq.com/s') >= 0).length;
-  $('urls-note').textContent = '已识别 ' + n + ' 个链接';
+  const lines = $('urls').value.split('\\n').map(s => s.trim()).filter(Boolean);
+  const arts = lines.filter(u => u.indexOf('mp.weixin.qq.com/s') >= 0).length;
+  const feeds = lines.filter(u =>
+    (u.indexOf('http://') === 0 || u.indexOf('https://') === 0) &&
+    u.indexOf('mp.weixin.qq.com/s') < 0).length;
+  $('urls-note').textContent = '已识别 ' + arts + ' 篇文章' +
+    (feeds ? '、' + feeds + ' 个订阅源' : '');
 });
 async function startUrls() {
   lastMode = 'urls';
   const text = $('urls').value.trim();
-  if (!text) { alert('请先粘贴文章链接'); return; }
+  if (!text) { alert('请先粘贴文章链接或 RSS 地址'); return; }
   $('btn-urls').disabled = true;
   $('card-progress').classList.remove('hide');
   $('log').textContent = '正在启动…';
@@ -575,31 +605,35 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/api/collect-urls":
             body = self._json_body()
             text = str(body.get("text") or "")
-            links, seen = [], set()
-            for m in MP_LINK_RE.finditer(text):
-                u = m.group(0).rstrip(".,;")
-                if u not in seen:
-                    seen.add(u)
-                    links.append(u)
-            if not links:
+            mp_links, rss, xml = parse_url_sources(text)
+            if not (mp_links or rss or xml):
                 self._send(400, {"ok": False,
-                                 "message": "没识别到文章链接，请粘贴以 https://mp.weixin.qq.com/s/ 开头的链接"})
+                                 "message": "没识别到内容。请粘贴文章链接、RSS/Atom 订阅地址，或 OPML 文件内容。"})
                 return
-            links = links[:50]
             if not os.path.exists(COLLECTOR):
                 self._send(500, {"ok": False, "message": "缺少 wechat_collector.py"})
                 return
             os.makedirs(URLS_DIR, exist_ok=True)
-            urls_file = os.path.join(
-                URLS_DIR, "urls_%s.txt" % time.strftime("%Y%m%d_%H%M%S"))
-            with open(urls_file, "w", encoding="utf-8") as f:
-                f.write("\n".join(links) + "\n")
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            sources = []
+            if mp_links:
+                urls_file = os.path.join(URLS_DIR, "urls_%s.txt" % stamp)
+                with open(urls_file, "w", encoding="utf-8") as f:
+                    f.write("\n".join(mp_links[:50]) + "\n")
+                sources.append(urls_file)
+            if xml:
+                opml_file = os.path.join(URLS_DIR, "feed_%s.opml" % stamp)
+                with open(opml_file, "w", encoding="utf-8") as f:
+                    f.write(xml)
+                sources.append(opml_file)
+            sources.extend(rss[:10])
             ok, msg = start_process(
                 COLLECT_JOB,
-                [sys.executable, COLLECTOR, "collect-urls", urls_file],
+                [sys.executable, COLLECTOR, "collect-urls", *sources],
                 SKILL_DIR)
-            self._send(200 if ok else 409,
-                       {"ok": ok, "message": msg, "count": len(links)})
+            self._send(200 if ok else 409, {
+                "ok": ok, "message": msg,
+                "count": len(mp_links), "feeds": len(rss)})
         elif p == "/api/collect":
             body = self._json_body()
             account = str(body.get("account") or "").strip()
