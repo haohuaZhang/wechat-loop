@@ -55,6 +55,10 @@ bash -n scripts/run_daily.sh 2>/dev/null && pass "run_daily.sh 语法 OK" || fai
 python3 scripts/extract_exemplar.py --list >/dev/null 2>&1 \
     && pass "extract_exemplar.py" || fail "extract_exemplar.py"
 
+# wizard_server --help（纯标准库，只解析参数不启动服务）
+python3 scripts/wizard_server.py --help >/dev/null 2>&1 \
+    && pass "wizard_server.py" || fail "wizard_server.py"
+
 # ── 3. 上游依赖检查 ──────────────────────────────────────────
 echo ""
 echo "③ 上游仓库 & 依赖"
