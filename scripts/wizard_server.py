@@ -33,6 +33,7 @@ SKILL_DIR = os.path.join(ROOT, "wechat-digest-skill")
 COLLECTOR = os.path.join(SKILL_DIR, "wechat_collector.py")
 ANALYZE = os.path.join(ROOT, "scripts", "local_analyze.py")
 EXPORT = os.path.join(ROOT, "scripts", "export_batch.py")
+TRAE_LOOP = os.path.join(ROOT, "scripts", "trae_loop.py")
 RENDER = os.path.join(ROOT, "scripts", "render_workbench.py")
 KB_PATH = os.path.join(SKILL_DIR, "output", "knowledge_base.json")
 DIGEST_PATH = os.path.join(SKILL_DIR, "output", "digest.html")
@@ -141,6 +142,7 @@ class Job:
 
 LOGIN_JOB = Job("login")
 COLLECT_JOB = Job("collect")
+TRAE_JOB = Job("trae")
 
 
 def _pump(stream, job):
@@ -201,6 +203,12 @@ def _watch(job, proc):
         job.finished_at = now()
         if job.phase == "freq":
             pass
+        elif job.name == "trae":
+            if code == 0:
+                job.phase = "done"
+            else:
+                job.phase = "error"
+                job.error = job.error or f"拆解闭环退出码 {code}（可能等待超时）"
         elif job.name == "collect":
             if code == 0 and any("完成：共" in l for l in job.lines):
                 job.phase = "rendering"
@@ -342,6 +350,7 @@ PAGE = """<!DOCTYPE html>
       <button id="btn-retry" class="ghost hide">重试采集</button>
       <button id="btn-rebuild" class="ghost hide">重新拆解</button>
       <button id="btn-export" class="ghost hide">导出待拆解（发给 Trae）</button>
+      <button id="btn-trae" class="ghost hide">一键闭环：导出 → 我拆 → 自动写回</button>
       <a id="open-workbench" class="open hide" href="/digest.html" target="_blank">
         <button>打开工作台</button>
       </a>
@@ -490,6 +499,47 @@ $('btn-rebuild').onclick = async () => {
   btn.disabled = false; btn.textContent = '重新拆解';
 };
 $('btn-export').onclick = () => { window.location = '/export/pending.json'; };
+let traeTimer = null;
+$('btn-trae').onclick = async () => {
+  const btn = $('btn-trae');
+  btn.disabled = true; btn.textContent = '闭环进行中…';
+  showBanner($('collect-msg'), 'warn', '正在导出批次…');
+  try {
+    const r = await api('/api/trae/start', { method: 'POST' });
+    if (!r.ok) {
+      showBanner($('collect-msg'), 'err', r.message || '启动失败');
+      btn.disabled = false; btn.textContent = '一键闭环：导出 → 我拆 → 自动写回';
+      return;
+    }
+    pollTrae();
+  } catch (e) {
+    showBanner($('collect-msg'), 'err', '启动失败：' + e);
+    btn.disabled = false; btn.textContent = '一键闭环：导出 → 我拆 → 自动写回';
+  }
+};
+async function pollTrae() {
+  clearTimeout(traeTimer);
+  const s = await api('/api/trae/status');
+  $('log').textContent = (s.log && s.log.length) ? s.log.join('\\n') : '等待输出…';
+  $('log').scrollTop = $('log').scrollHeight;
+  const msg = $('collect-msg');
+  if (s.phase === 'done') {
+    showBanner(msg, 'ok', '拆解结果已写回，工作台已刷新。');
+    $('open-workbench').classList.remove('hide');
+    $('btn-trae').disabled = false;
+    $('btn-trae').textContent = '一键闭环：导出 → 我拆 → 自动写回';
+    return;
+  }
+  if (s.phase === 'error') {
+    showBanner(msg, 'err', '闭环中断：' + (s.error || '等待超时，可重新点击'));
+    $('btn-trae').disabled = false;
+    $('btn-trae').textContent = '一键闭环：导出 → 我拆 → 自动写回';
+    return;
+  }
+  showBanner(msg, 'warn',
+    '① 把 loop/trae/outbox/wechat-batch.json 发到 Trae 对话；② 拿到 analysis.json 后保存到「下载」文件夹，我会自动写回。');
+  traeTimer = setTimeout(pollTrae, 3000);
+}
 const dz = $('dropzone'), fileBatch = $('file-batch');
 async function uploadBatch(file) {
   showBanner($('collect-msg'), 'warn', '正在导入拆解结果…');
@@ -545,6 +595,7 @@ async function pollCollect() {
     $('open-workbench').classList.remove('hide');
     $('btn-rebuild').classList.remove('hide');
     $('btn-export').classList.remove('hide');
+    $('btn-trae').classList.remove('hide');
     $('dropzone').classList.remove('hide');
     $('btn-collect').disabled = false;
     $('btn-urls').disabled = false;
@@ -588,6 +639,7 @@ async function pollCollect() {
       $('open-workbench').classList.remove('hide');
       $('btn-rebuild').classList.remove('hide');
       $('btn-export').classList.remove('hide');
+      $('btn-trae').classList.remove('hide');
       $('dropzone').classList.remove('hide');
       if (!$('log').textContent.trim() || $('log').textContent === '等待开始…') {
         $('log').textContent = '已有历史知识库，可直接打开工作台，或点「重新拆解」刷新。';
@@ -655,6 +707,8 @@ class Handler(BaseHTTPRequestHandler):
             snap = COLLECT_JOB.snapshot()
             snap["freqRemaining"] = freq_remaining()
             self._send(200, snap)
+        elif p == "/api/trae/status":
+            self._send(200, TRAE_JOB.snapshot())
         elif p == "/api/kb/stats":
             self._send(200, self._kb_stats())
         elif p == "/api/open":
@@ -740,6 +794,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(200, {"ok": True,
                              "message": (r.stdout or "").strip() or "已导入拆解结果"})
+        elif p == "/api/trae/start":
+            ok, msg = start_process(
+                TRAE_JOB, [sys.executable, TRAE_LOOP, "run"], ROOT)
+            self._send(200 if ok else 409, {"ok": ok, "message": msg})
         elif p == "/api/rebuild":
             ok, msgs = True, []
             try:
