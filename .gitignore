@@ -1,3 +1,8 @@
+# ── 本地工具链（venv + chromium，由 bootstrap.sh 生成） ──
+.toolchain/
+tools/gate/activate.sh
+tools/gate/.bootstrap_stamp
+
 # ── Python ──
 __pycache__/
 *.py[cod]

@@ -19,10 +19,10 @@ if [[ "$PY_OK" != "yes" ]]; then
 fi
 echo "✅ Python $PYVER OK"
 
-# 2. 依赖
+# 2. 依赖（装到可复用工具链里，重复运行会秒退）
 echo "安装 Python 依赖..."
-pip install --quiet playwright trafilatura beautifulsoup4 markdown cssutils Pygments \
-    pyyaml apscheduler pillow pydantic python-dotenv requests 2>&1 | tail -3
+bash tools/gate/bootstrap.sh
+source tools/gate/activate.sh
 
 # 3. 上游仓库检查
 for repo in wechat-flow wechat-flow-film; do

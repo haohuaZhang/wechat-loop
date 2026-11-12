@@ -10,6 +10,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+# 复用 bootstrap.sh 装好的工具链（有就切，没有就继续用系统 Python）
+[[ -f "$ROOT/tools/gate/activate.sh" ]] && source "$ROOT/tools/gate/activate.sh"
+
 PASS=0
 FAIL=0
 WARN=0
