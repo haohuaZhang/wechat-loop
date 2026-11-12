@@ -23,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -699,6 +700,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if p in ("/", "/index.html"):
             self._send(200, PAGE, "text/html; charset=utf-8")
+        elif p == "/api/health":
+            self._send(200, {"app": "wechat-loop", "ok": True})
         elif p == "/api/login/status":
             self._send(200, self._login_status())
         elif p == "/api/login/qr":
@@ -931,6 +934,18 @@ def _startup_backfill():
         print(f"启动补拆解跳过：{e}")
 
 
+def _wizard_running(url):
+    """端口是否已经跑着本向导（而不是别的程序）。"""
+    try:
+        with urllib.request.urlopen(url + "api/health", timeout=1.5) as resp:
+            if getattr(resp, "status", 200) != 200:
+                return False
+            data = json.loads(resp.read().decode("utf-8", "replace"))
+            return data.get("app") == "wechat-loop"
+    except Exception:
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser(
         prog="wizard_server.py", description="公众号采集本地向导（网页版）")
@@ -939,9 +954,28 @@ def main():
     ap.add_argument("--open", action="store_true", help="启动后自动用浏览器打开向导页")
     args = ap.parse_args()
 
-    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    url = f"http://{args.host}:{args.port}/"
+    # 端口被占时：先看是不是“上一次没关掉的向导”，是就直接复用，避免用户一脸懵。
+    httpd = None
+    last_err = None
+    for port in range(args.port, args.port + 10):
+        try:
+            httpd = ThreadingHTTPServer((args.host, port), Handler)
+            break
+        except OSError as e:
+            last_err = e
+            existing = f"http://{args.host}:{port}/"
+            if _wizard_running(existing):
+                print(f"向导已经在运行：{existing}")
+                print("已为你打开页面；要重启的话，先关掉旧的那个终端窗口。")
+                webbrowser.open(existing)
+                return
+    if httpd is None:
+        sys.exit(f"端口 {args.port}-{args.port + 9} 都被占用：{last_err}")
+
+    url = f"http://{args.host}:{httpd.server_address[1]}/"
     print(f"向导已启动： {url}")
+    if port != args.port:
+        print(f"（{args.port} 被占用，自动改用 {port}）")
     print("按 Ctrl+C 退出。")
     threading.Thread(target=_startup_backfill, daemon=True).start()
     if args.open:
