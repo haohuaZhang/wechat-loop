@@ -34,6 +34,8 @@ RENDER = os.path.join(SKILL_DIR, "render_html.py")
 KB_PATH = os.path.join(SKILL_DIR, "output", "knowledge_base.json")
 DIGEST_PATH = os.path.join(SKILL_DIR, "output", "digest.html")
 PREVIEW_PATH = os.path.join(ROOT, "loop", "preview", "digest.html")
+FREQ_GUARD_PATH = os.path.join(ROOT, "loop", ".freq_guard.json")
+FREQ_LOCK_SECONDS = 30 * 60
 
 LOGIN_SCRIPT = os.path.join(ROOT, "scripts", "wx_login.py")
 LOGIN_DIR = os.path.join(ROOT, "loop", ".login")
@@ -53,6 +55,25 @@ def read_json(path, default=None):
             return json.load(f)
     except (OSError, ValueError):
         return default
+
+
+# ── 频控冷却锁：撞到 200013 后 30 分钟内不再真正发请求 ──
+# 微信每次被撞都会重新计时，连续点「重试」只会让封得更久。
+def set_freq_guard(seconds=FREQ_LOCK_SECONDS):
+    try:
+        os.makedirs(os.path.dirname(FREQ_GUARD_PATH), exist_ok=True)
+        with open(FREQ_GUARD_PATH, "w", encoding="utf-8") as f:
+            json.dump({"until": time.time() + seconds}, f)
+    except OSError:
+        pass
+
+
+def freq_remaining():
+    data = read_json(FREQ_GUARD_PATH, {}) or {}
+    try:
+        return max(0, int(float(data.get("until", 0)) - time.time()))
+    except (TypeError, ValueError):
+        return 0
 
 
 # ════════════════════════════════════════════════════════════════
@@ -101,6 +122,7 @@ def _pump(stream, job):
                 if job.phase in ("running", "rendering"):
                     if "200013" in low or "命中频控" in line or "多次重试仍被频控" in line:
                         job.phase = "freq"
+                        set_freq_guard()
                     elif "完成：共" in line or "✓ 登录成功" in line:
                         job.phase = "rendering" if job.name == "collect" else "done"
     except (ValueError, OSError):
@@ -368,9 +390,18 @@ async function pollCollect() {
   const msg = $('collect-msg');
 
   if (s.phase === 'freq') {
-    showBanner(msg, 'warn', '被微信频控（200013）。这是正常的保护机制，请等 30–60 分钟后再点「重试采集」。');
-    $('btn-retry').classList.remove('hide');
-    $('btn-collect').disabled = false;
+    const wait = s.freqRemaining || 0;
+    if (wait > 0) {
+      const mins = Math.max(1, Math.ceil(wait / 60));
+      showBanner(msg, 'warn', '被微信频控（200013）。已自动锁定 ' + mins + ' 分钟，请勿反复点击，冷却结束后再试。');
+      $('btn-retry').classList.add('hide');
+      $('btn-collect').disabled = true;
+      collectTimer = setTimeout(pollCollect, 30000);
+    } else {
+      showBanner(msg, 'warn', '冷却已结束，可以点「重试采集」再试一次（若仍失败就继续等）。');
+      $('btn-retry').classList.remove('hide');
+      $('btn-collect').disabled = false;
+    }
     $('card-progress').classList.remove('hide');
     return;
   }
@@ -468,7 +499,9 @@ class Handler(BaseHTTPRequestHandler):
         elif p == "/api/login/qr":
             self._serve_file(LOGIN_QR, "image/png")
         elif p == "/api/collect/status":
-            self._send(200, COLLECT_JOB.snapshot())
+            snap = COLLECT_JOB.snapshot()
+            snap["freqRemaining"] = freq_remaining()
+            self._send(200, snap)
         elif p == "/api/kb/stats":
             self._send(200, self._kb_stats())
         elif p == "/api/open":
@@ -508,6 +541,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not os.path.exists(COLLECTOR):
                 self._send(500, {"ok": False, "message": "缺少 wechat_collector.py"})
+                return
+            wait = freq_remaining()
+            if wait > 0:
+                self._send(429, {
+                    "ok": False,
+                    "message": f"微信限流冷却中，还需约 {max(1, wait // 60)} 分钟，请稍后再试。",
+                    "freqRemaining": wait,
+                })
                 return
             ok, msg = start_process(COLLECT_JOB, [
                 sys.executable, COLLECTOR, "collect", account,
