@@ -243,6 +243,7 @@ def main():
             skipped += 1
             continue
         kb.set_analysis(data, aid, analysis)
+        art["analysisSource"] = "local"
         done.append(aid)
 
     build_topics(data, done)

@@ -32,6 +32,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL_DIR = os.path.join(ROOT, "wechat-digest-skill")
 COLLECTOR = os.path.join(SKILL_DIR, "wechat_collector.py")
 ANALYZE = os.path.join(ROOT, "scripts", "local_analyze.py")
+EXPORT = os.path.join(ROOT, "scripts", "export_batch.py")
 RENDER = os.path.join(ROOT, "scripts", "render_workbench.py")
 KB_PATH = os.path.join(SKILL_DIR, "output", "knowledge_base.json")
 DIGEST_PATH = os.path.join(SKILL_DIR, "output", "digest.html")
@@ -39,6 +40,7 @@ PREVIEW_PATH = os.path.join(ROOT, "loop", "preview", "digest.html")
 FREQ_GUARD_PATH = os.path.join(ROOT, "loop", ".freq_guard.json")
 FREQ_LOCK_SECONDS = 30 * 60
 URLS_DIR = os.path.join(ROOT, "loop", ".urls")
+IMPORT_DIR = os.path.join(ROOT, "loop", "import")
 MP_LINK_RE = re.compile(r"https?://mp\.weixin\.qq\.com/s[0-9A-Za-z_\-./?=&%#~+]*")
 
 LOGIN_SCRIPT = os.path.join(ROOT, "scripts", "wx_login.py")
@@ -339,10 +341,15 @@ PAGE = """<!DOCTYPE html>
     <div class="row" style="margin-top:14px">
       <button id="btn-retry" class="ghost hide">重试采集</button>
       <button id="btn-rebuild" class="ghost hide">重新拆解</button>
+      <button id="btn-export" class="ghost hide">导出待拆解（发给 Trae）</button>
       <a id="open-workbench" class="open hide" href="/digest.html" target="_blank">
         <button>打开工作台</button>
       </a>
     </div>
+    <div id="dropzone" class="hide" style="margin-top:12px;border:1.5px dashed #c9c9d2;border-radius:12px;padding:16px;text-align:center;color:#6b6b76;cursor:pointer">
+      把 Trae 返回的 analysis.json 拖到这里，或点此选择文件
+    </div>
+    <input type="file" id="file-batch" accept="application/json,.json" style="display:none">
   </section>
 </div>
 
@@ -482,6 +489,30 @@ $('btn-rebuild').onclick = async () => {
   }
   btn.disabled = false; btn.textContent = '重新拆解';
 };
+$('btn-export').onclick = () => { window.location = '/export/pending.json'; };
+const dz = $('dropzone'), fileBatch = $('file-batch');
+async function uploadBatch(file) {
+  showBanner($('collect-msg'), 'warn', '正在导入拆解结果…');
+  try {
+    const batch = JSON.parse(await file.text());
+    const r = await api('/api/apply-batch', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batch })
+    });
+    if (r.ok) {
+      showBanner($('collect-msg'), 'ok', r.message || '已导入拆解结果，工作台已刷新。');
+      $('open-workbench').classList.remove('hide');
+    } else {
+      showBanner($('collect-msg'), 'err', '导入失败：' + (r.message || '未知错误'));
+    }
+  } catch (e) {
+    showBanner($('collect-msg'), 'err', '导入失败：文件不是有效的 JSON');
+  }
+}
+dz.onclick = () => fileBatch.click();
+fileBatch.onchange = () => { if (fileBatch.files[0]) uploadBatch(fileBatch.files[0]); };
+dz.ondragover = (e) => e.preventDefault();
+dz.ondrop = (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) uploadBatch(e.dataTransfer.files[0]); };
 $('account').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !$('btn-collect').disabled) startCollect();
 });
@@ -513,6 +544,8 @@ async function pollCollect() {
     showBanner(msg, 'ok', '采集完成，工作台已生成。');
     $('open-workbench').classList.remove('hide');
     $('btn-rebuild').classList.remove('hide');
+    $('btn-export').classList.remove('hide');
+    $('dropzone').classList.remove('hide');
     $('btn-collect').disabled = false;
     $('btn-urls').disabled = false;
     return;
@@ -554,6 +587,8 @@ async function pollCollect() {
       $('card-progress').classList.remove('hide');
       $('open-workbench').classList.remove('hide');
       $('btn-rebuild').classList.remove('hide');
+      $('btn-export').classList.remove('hide');
+      $('dropzone').classList.remove('hide');
       if (!$('log').textContent.trim() || $('log').textContent === '等待开始…') {
         $('log').textContent = '已有历史知识库，可直接打开工作台，或点「重新拆解」刷新。';
       }
@@ -628,6 +663,23 @@ class Handler(BaseHTTPRequestHandler):
                 "path": DIGEST_PATH,
                 "url": "/digest.html",
             })
+        elif p == "/export/pending.json":
+            out = os.path.join(ROOT, "loop", "export", "batch.json")
+            try:
+                r = subprocess.run(
+                    [sys.executable, EXPORT, "--out", out], cwd=ROOT,
+                    capture_output=True, text=True, timeout=60)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                self._send(500, {"ok": False, "message": str(e)})
+                return
+            if r.returncode != 0 or not os.path.exists(out):
+                self._send(500, {"ok": False,
+                                 "message": (r.stderr or "导出失败").strip()[:300]})
+                return
+            with open(out, "rb") as f:
+                data = f.read()
+            self._send(200, data, "application/json; charset=utf-8", {
+                "Content-Disposition": 'attachment; filename="wechat-batch.json"'})
         elif p == "/digest.html":
             self._serve_file(DIGEST_PATH, "text/html; charset=utf-8")
         elif p == "/preview/digest.html":
@@ -643,6 +695,51 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = start_process(
                 LOGIN_JOB, [sys.executable, LOGIN_SCRIPT], ROOT)
             self._send(200 if ok else 409, {"ok": ok, "message": msg})
+        elif p == "/api/apply-batch":
+            body = self._json_body()
+            batch = body.get("batch")
+            if not isinstance(batch, dict) or not isinstance(batch.get("articles"), dict):
+                self._send(400, {"ok": False,
+                                 "message": '文件格式不对：应包含 "articles": {"<id>": {...}}'})
+                return
+            os.makedirs(IMPORT_DIR, exist_ok=True)
+            path = os.path.join(IMPORT_DIR,
+                                "analysis_%s.json" % time.strftime("%Y%m%d_%H%M%S"))
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(batch, f, ensure_ascii=False, indent=2)
+            try:
+                r = subprocess.run(
+                    [sys.executable, os.path.join(SKILL_DIR, "kb.py"),
+                     "--kb", KB_PATH, "apply", "--file", path],
+                    cwd=SKILL_DIR, capture_output=True, text=True, timeout=120)
+            except (OSError, subprocess.TimeoutExpired) as e:
+                self._send(500, {"ok": False, "message": str(e)})
+                return
+            if r.returncode != 0:
+                self._send(500, {"ok": False,
+                                 "message": (r.stderr or r.stdout or "写回失败").strip()[:300]})
+                return
+            # 标记来源，导出时不再重复派给 agent
+            data = read_json(KB_PATH, {}) or {}
+            arts = data.get("articles") or {}
+            for aid in batch["articles"]:
+                if aid in arts:
+                    arts[aid]["analysisSource"] = "agent"
+            with open(KB_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            try:
+                rd = subprocess.run([sys.executable, RENDER], cwd=SKILL_DIR,
+                                    capture_output=True, text=True, timeout=120)
+                if rd.returncode != 0:
+                    self._send(500, {"ok": False,
+                                     "message": "写回成功但刷新工作台失败：" +
+                                                (rd.stderr or "").strip()[:200]})
+                    return
+            except (OSError, subprocess.TimeoutExpired) as e:
+                self._send(500, {"ok": False, "message": "刷新工作台失败：%s" % e})
+                return
+            self._send(200, {"ok": True,
+                             "message": (r.stdout or "").strip() or "已导入拆解结果"})
         elif p == "/api/rebuild":
             ok, msgs = True, []
             try:
