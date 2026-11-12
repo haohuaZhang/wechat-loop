@@ -31,7 +31,8 @@ from urllib.parse import parse_qs, urlparse
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKILL_DIR = os.path.join(ROOT, "wechat-digest-skill")
 COLLECTOR = os.path.join(SKILL_DIR, "wechat_collector.py")
-RENDER = os.path.join(SKILL_DIR, "render_html.py")
+ANALYZE = os.path.join(ROOT, "scripts", "local_analyze.py")
+RENDER = os.path.join(ROOT, "scripts", "render_workbench.py")
 KB_PATH = os.path.join(SKILL_DIR, "output", "knowledge_base.json")
 DIGEST_PATH = os.path.join(SKILL_DIR, "output", "digest.html")
 PREVIEW_PATH = os.path.join(ROOT, "loop", "preview", "digest.html")
@@ -209,6 +210,17 @@ def _watch(job, proc):
                 job.error = job.error or f"采集进程退出码 {code}"
 
     if job.name == "collect" and job.phase == "rendering":
+        # 先本地拆解（补摘要/标签/主题），再生成工作台
+        try:
+            an = subprocess.run(
+                [sys.executable, ANALYZE, "--quiet"], cwd=ROOT,
+                capture_output=True, text=True, timeout=180)
+            if an.returncode == 0:
+                with STATE_LOCK:
+                    COLLECT_JOB.lines.append("✓ " + (an.stdout.strip() or "本地拆解完成"))
+        except (OSError, subprocess.TimeoutExpired) as e:
+            with STATE_LOCK:
+                COLLECT_JOB.lines.append(f"拆解跳过：{e}")
         # 单独跑渲染（不再交给 COLLECT_JOB 跑，避免覆盖采集日志）
         try:
             out = subprocess.run(
@@ -326,6 +338,7 @@ PAGE = """<!DOCTYPE html>
     <pre class="log" id="log">等待开始…</pre>
     <div class="row" style="margin-top:14px">
       <button id="btn-retry" class="ghost hide">重试采集</button>
+      <button id="btn-rebuild" class="ghost hide">重新拆解</button>
       <a id="open-workbench" class="open hide" href="/digest.html" target="_blank">
         <button>打开工作台</button>
       </a>
@@ -452,6 +465,23 @@ $('btn-retry').onclick = () => {
   $('open-workbench').classList.add('hide');
   if (lastMode === 'urls') startUrls(); else startCollect();
 };
+$('btn-rebuild').onclick = async () => {
+  const btn = $('btn-rebuild');
+  btn.disabled = true; btn.textContent = '拆解中…';
+  showBanner($('collect-msg'), 'warn', '正在本地拆解并刷新工作台，请稍候…');
+  try {
+    const r = await api('/api/rebuild', { method: 'POST' });
+    if (r.ok) {
+      showBanner($('collect-msg'), 'ok', '拆解完成，工作台已刷新。');
+      $('open-workbench').classList.remove('hide');
+    } else {
+      showBanner($('collect-msg'), 'err', '拆解失败：' + (r.message || '未知错误'));
+    }
+  } catch (e) {
+    showBanner($('collect-msg'), 'err', '拆解失败：' + e);
+  }
+  btn.disabled = false; btn.textContent = '重新拆解';
+};
 $('account').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !$('btn-collect').disabled) startCollect();
 });
@@ -482,6 +512,7 @@ async function pollCollect() {
   if (s.phase === 'done') {
     showBanner(msg, 'ok', '采集完成，工作台已生成。');
     $('open-workbench').classList.remove('hide');
+    $('btn-rebuild').classList.remove('hide');
     $('btn-collect').disabled = false;
     $('btn-urls').disabled = false;
     return;
@@ -517,6 +548,16 @@ async function pollCollect() {
   if (c.phase !== 'idle') {
     $('card-progress').classList.remove('hide');
     pollCollect();
+  } else {
+    const o = await api('/api/open');
+    if (o.ok) {
+      $('card-progress').classList.remove('hide');
+      $('open-workbench').classList.remove('hide');
+      $('btn-rebuild').classList.remove('hide');
+      if (!$('log').textContent.trim() || $('log').textContent === '等待开始…') {
+        $('log').textContent = '已有历史知识库，可直接打开工作台，或点「重新拆解」刷新。';
+      }
+    }
   }
 })();
 </script>
@@ -602,6 +643,28 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = start_process(
                 LOGIN_JOB, [sys.executable, LOGIN_SCRIPT], ROOT)
             self._send(200 if ok else 409, {"ok": ok, "message": msg})
+        elif p == "/api/rebuild":
+            ok, msgs = True, []
+            try:
+                an = subprocess.run(
+                    [sys.executable, ANALYZE, "--all", "--quiet"], cwd=ROOT,
+                    capture_output=True, text=True, timeout=180)
+                if an.returncode != 0:
+                    ok = False
+                    msgs.append((an.stderr or "").strip()[:300])
+                elif (an.stdout or "").strip():
+                    msgs.append(an.stdout.strip())
+                rd = subprocess.run(
+                    [sys.executable, RENDER], cwd=SKILL_DIR,
+                    capture_output=True, text=True, timeout=120)
+                if rd.returncode != 0:
+                    ok = False
+                    msgs.append((rd.stderr or "").strip()[:300])
+            except (OSError, subprocess.TimeoutExpired) as e:
+                ok = False
+                msgs.append(str(e))
+            self._send(200 if ok else 500, {
+                "ok": ok, "message": " / ".join(m for m in msgs if m)})
         elif p == "/api/collect-urls":
             body = self._json_body()
             text = str(body.get("text") or "")
@@ -692,6 +755,27 @@ class Handler(BaseHTTPRequestHandler):
         }
 
 
+def _startup_backfill():
+    """启动时给历史文章补拆解：有未拆解的条目就自动跑一次并刷新工作台。"""
+    if not os.path.exists(KB_PATH):
+        return
+    data = read_json(KB_PATH, {}) or {}
+    arts = data.get("articles") or {}
+    if not any(not a.get("analyzedAt") for a in arts.values()):
+        return
+    try:
+        an = subprocess.run([sys.executable, ANALYZE, "--quiet"], cwd=ROOT,
+                            capture_output=True, text=True, timeout=180)
+        if an.returncode != 0:
+            print(f"启动补拆解失败：{(an.stderr or '').strip()[:200]}")
+            return
+        subprocess.run([sys.executable, RENDER], cwd=SKILL_DIR,
+                       capture_output=True, text=True, timeout=120)
+        print("✓ 已为历史文章补做本地拆解，并刷新工作台")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"启动补拆解跳过：{e}")
+
+
 def main():
     ap = argparse.ArgumentParser(
         prog="wizard_server.py", description="公众号采集本地向导（网页版）")
@@ -704,6 +788,7 @@ def main():
     url = f"http://{args.host}:{args.port}/"
     print(f"向导已启动： {url}")
     print("按 Ctrl+C 退出。")
+    threading.Thread(target=_startup_backfill, daemon=True).start()
     if args.open:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
