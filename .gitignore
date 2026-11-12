@@ -3,6 +3,9 @@
 tools/gate/activate.sh
 tools/gate/.bootstrap_stamp
 
+# ── 登录产物（二维码/凭证状态，绝对不能推） ──
+loop/.login/
+
 # ── Python ──
 __pycache__/
 *.py[cod]
