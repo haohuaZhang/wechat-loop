@@ -18,6 +18,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -36,6 +37,8 @@ DIGEST_PATH = os.path.join(SKILL_DIR, "output", "digest.html")
 PREVIEW_PATH = os.path.join(ROOT, "loop", "preview", "digest.html")
 FREQ_GUARD_PATH = os.path.join(ROOT, "loop", ".freq_guard.json")
 FREQ_LOCK_SECONDS = 30 * 60
+URLS_DIR = os.path.join(ROOT, "loop", ".urls")
+MP_LINK_RE = re.compile(r"https?://mp\.weixin\.qq\.com/s[0-9A-Za-z_\-./?=&%#~+]*")
 
 LOGIN_SCRIPT = os.path.join(ROOT, "scripts", "wx_login.py")
 LOGIN_DIR = os.path.join(ROOT, "loop", ".login")
@@ -233,6 +236,8 @@ PAGE = """<!DOCTYPE html>
   button.ghost { background:#eef0f2; color:var(--ink); }
   input[type=text] { font:inherit; padding:13px 14px; border:1px solid var(--line);
                      border-radius:12px; width:100%; }
+  textarea { font:inherit; padding:13px 14px; border:1px solid var(--line);
+             border-radius:12px; width:100%; resize:vertical; }
   select { font:inherit; padding:13px 14px; border:1px solid var(--line); border-radius:12px; }
   .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .note { color:var(--muted); font-size:14px; margin-top:10px; }
@@ -279,6 +284,16 @@ PAGE = """<!DOCTYPE html>
     <div class="note">先小批量试（3 篇）最稳。微信对列表接口有频控，命中后需等 30–60 分钟。</div>
   </section>
 
+  <section class="card" id="card-urls">
+    <h2><span class="step">备</span>限流了？用文章链接也能采</h2>
+    <div class="note">手机微信打开文章 → 右上角「…」→「复制链接」，一行一个粘贴到下面。这条路直接打开文章页抓正文，不经过被限流的列表接口。</div>
+    <textarea id="urls" rows="4" placeholder="https://mp.weixin.qq.com/s/xxxxxxxx&#10;https://mp.weixin.qq.com/s/yyyyyyyy"></textarea>
+    <div class="row" style="margin-top:12px">
+      <button id="btn-urls" disabled>用链接采集</button>
+      <span class="note" id="urls-note" style="margin-top:0">已识别 0 个链接</span>
+    </div>
+  </section>
+
   <section class="card hide" id="card-progress">
     <h2><span class="step">3</span>采集进度</h2>
     <div id="collect-msg" class="banner hide"></div>
@@ -294,7 +309,7 @@ PAGE = """<!DOCTYPE html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let loginTimer = null, collectTimer = null;
+let loginTimer = null, collectTimer = null, lastMode = 'account';
 
 function showBanner(el, kind, text) {
   el.className = 'banner ' + kind;
@@ -332,6 +347,7 @@ async function pollLogin() {
     showBanner($('login-msg'), 'ok', '登录成功，可以进入下一步。');
     $('card-login').classList.add('done');
     $('btn-collect').disabled = false;
+    $('btn-urls').disabled = false;
     $('account').focus();
   } else if (s.status === 'expired') {
     setState('二维码已失效');
@@ -353,6 +369,7 @@ async function pollLogin() {
 
 // ── 采集 ────────────────────────────────────────────────
 async function startCollect() {
+  lastMode = 'account';
   const account = $('account').value.trim();
   if (!account) { alert('请先输入公众号名称'); return; }
   $('btn-collect').disabled = true;
@@ -372,11 +389,38 @@ async function startCollect() {
 }
 
 $('btn-collect').onclick = startCollect;
+
+// ── 备用：粘贴文章链接采集（不走列表接口）───────────────
+$('urls').addEventListener('input', () => {
+  const n = $('urls').value.split('\\n')
+    .filter(u => u.indexOf('mp.weixin.qq.com/s') >= 0).length;
+  $('urls-note').textContent = '已识别 ' + n + ' 个链接';
+});
+async function startUrls() {
+  lastMode = 'urls';
+  const text = $('urls').value.trim();
+  if (!text) { alert('请先粘贴文章链接'); return; }
+  $('btn-urls').disabled = true;
+  $('card-progress').classList.remove('hide');
+  $('log').textContent = '正在启动…';
+  const r = await api('/api/collect-urls', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  });
+  if (!r.ok) {
+    showBanner($('collect-msg'), 'err', r.message);
+    $('btn-urls').disabled = false;
+    return;
+  }
+  pollCollect();
+}
+$('btn-urls').onclick = startUrls;
 $('btn-retry').onclick = () => {
   $('btn-retry').classList.add('hide');
   $('collect-msg').classList.add('hide');
   $('open-workbench').classList.add('hide');
-  startCollect();
+  if (lastMode === 'urls') startUrls(); else startCollect();
 };
 $('account').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !$('btn-collect').disabled) startCollect();
@@ -393,7 +437,7 @@ async function pollCollect() {
     const wait = s.freqRemaining || 0;
     if (wait > 0) {
       const mins = Math.max(1, Math.ceil(wait / 60));
-      showBanner(msg, 'warn', '被微信频控（200013）。已自动锁定 ' + mins + ' 分钟，请勿反复点击，冷却结束后再试。');
+      showBanner(msg, 'warn', '被微信频控（200013）。已自动锁定 ' + mins + ' 分钟，请勿反复点击；也可以现在用下方「链接采集」。');
       $('btn-retry').classList.add('hide');
       $('btn-collect').disabled = true;
       collectTimer = setTimeout(pollCollect, 30000);
@@ -409,12 +453,14 @@ async function pollCollect() {
     showBanner(msg, 'ok', '采集完成，工作台已生成。');
     $('open-workbench').classList.remove('hide');
     $('btn-collect').disabled = false;
+    $('btn-urls').disabled = false;
     return;
   }
   if (s.phase === 'error') {
     showBanner(msg, 'err', '出错了：' + (s.error || '请点重试'));
     $('btn-retry').classList.remove('hide');
     $('btn-collect').disabled = false;
+    $('btn-urls').disabled = false;
     return;
   }
   if (s.running || s.phase === 'rendering') {
@@ -430,6 +476,7 @@ async function pollCollect() {
     $('login-state').textContent = '已登录 ✓（凭证有效）';
     $('card-login').classList.add('done');
     $('btn-collect').disabled = false;
+    $('btn-urls').disabled = false;
   } else if (s.status === 'waiting' && s.running) {
     $('btn-login').disabled = true;
     pollLogin();
@@ -525,6 +572,34 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = start_process(
                 LOGIN_JOB, [sys.executable, LOGIN_SCRIPT], ROOT)
             self._send(200 if ok else 409, {"ok": ok, "message": msg})
+        elif p == "/api/collect-urls":
+            body = self._json_body()
+            text = str(body.get("text") or "")
+            links, seen = [], set()
+            for m in MP_LINK_RE.finditer(text):
+                u = m.group(0).rstrip(".,;")
+                if u not in seen:
+                    seen.add(u)
+                    links.append(u)
+            if not links:
+                self._send(400, {"ok": False,
+                                 "message": "没识别到文章链接，请粘贴以 https://mp.weixin.qq.com/s/ 开头的链接"})
+                return
+            links = links[:50]
+            if not os.path.exists(COLLECTOR):
+                self._send(500, {"ok": False, "message": "缺少 wechat_collector.py"})
+                return
+            os.makedirs(URLS_DIR, exist_ok=True)
+            urls_file = os.path.join(
+                URLS_DIR, "urls_%s.txt" % time.strftime("%Y%m%d_%H%M%S"))
+            with open(urls_file, "w", encoding="utf-8") as f:
+                f.write("\n".join(links) + "\n")
+            ok, msg = start_process(
+                COLLECT_JOB,
+                [sys.executable, COLLECTOR, "collect-urls", urls_file],
+                SKILL_DIR)
+            self._send(200 if ok else 409,
+                       {"ok": ok, "message": msg, "count": len(links)})
         elif p == "/api/collect":
             body = self._json_body()
             account = str(body.get("account") or "").strip()
