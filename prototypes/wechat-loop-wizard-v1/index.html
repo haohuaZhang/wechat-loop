@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="wechat-loop 公众号批量采集向导页高保真交互原型">
+  <title>采集向导 · wechat-loop</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="mock.js" defer></script>
+  <script src="api.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true">
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></symbol>
+    <symbol id="i-tasks" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></symbol>
+    <symbol id="i-library" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-rss" viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#collect" aria-label="wechat-loop 首页">
+        <span class="brand-mark">L</span>
+        <span><strong>wechat-loop</strong><small>内容采集工作台</small></span>
+      </a>
+      <nav class="side-nav" aria-label="主导航">
+        <a href="#collect" class="nav-item active" data-nav="collect"><svg><use href="#i-compass"/></svg><span>采集向导</span></a>
+        <a href="#tasks" class="nav-item" data-nav="tasks"><svg><use href="#i-tasks"/></svg><span>采集任务</span><span class="nav-count" id="navTaskCount">1</span></a>
+        <a href="#library" class="nav-item" data-nav="library"><svg><use href="#i-library"/></svg><span>入库文章</span></a>
+      </nav>
+      <div class="sidebar-note">
+        <svg><use href="#i-shield"/></svg>
+        <div><strong>数据只留在本机</strong><p>账号凭证与文章内容不会上传到我们的服务器。</p></div>
+      </div>
+      <div class="sidebar-foot"><span class="status-dot"></span>本地服务正常<span class="version">v1.0</span></div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="breadcrumb"><span>工作台</span><span>/</span><strong>采集向导</strong></div>
+        <div class="top-actions">
+          <span class="local-badge"><span class="status-dot"></span>127.0.0.1</span>
+          <button class="btn btn-ghost btn-sm" id="guideBtn"><svg><use href="#i-help"/></svg>使用指南</button>
+        </div>
+      </header>
+
+      <div class="content-inner">
+        <section class="hero reveal" id="collect">
+          <div>
+            <p class="eyebrow">FROM WECHAT TO KNOWLEDGE BASE</p>
+            <h1>把公众号内容，<br><em>采进你的知识库。</em></h1>
+            <p class="hero-copy">自动发现文章，批量下载正文，入库后直接拆解。<br>你只需选择来源，剩下的交给本地任务。</p>
+          </div>
+          <div class="auth-card" id="authCard">
+            <div class="auth-icon"><svg><use href="#i-book"/></svg></div>
+            <div class="auth-copy"><span>微信读书账号</span><strong id="authTitle">尚未连接</strong><small id="authDescription">扫码授权后即可自动采集</small></div>
+            <button class="btn btn-secondary btn-sm" id="authBtn">扫码登录</button>
+          </div>
+        </section>
+
+        <section class="stats-grid reveal delay-1" aria-label="知识库概况">
+          <article class="stat-card"><span>已入库文章</span><strong id="statArticles">128</strong><small>篇 · 本地知识库</small></article>
+          <article class="stat-card"><span>本月新增</span><strong id="statMonth">46</strong><small>篇 · 自动去重后</small></article>
+          <article class="stat-card"><span>跟踪公众号</span><strong id="statAccounts">12</strong><small>个 · 5 个常用</small></article>
+          <article class="stat-card accent"><span>待 Trae 拆解</span><strong id="statPending">3</strong><small>篇 · 可一键导出</small></article>
+        </section>
+
+        <div class="workspace-grid reveal delay-2">
+          <section class="card collector-card" aria-labelledby="collectorTitle">
+            <div class="card-heading">
+              <div class="step-number">01</div>
+              <div><h2 id="collectorTitle">选择采集方式</h2><p>每次创建一个任务，采集完成后自动入库。</p></div>
+            </div>
+
+            <div class="source-tabs" role="tablist" aria-label="采集来源">
+              <button class="source-tab active" role="tab" aria-selected="true" data-source="auto"><svg><use href="#i-compass"/></svg><span><strong>自动采集</strong><small>输入公众号，自动发现文章</small></span></button>
+              <button class="source-tab" role="tab" aria-selected="false" data-source="fallback"><svg><use href="#i-link"/></svg><span><strong>链接 / 订阅</strong><small>已有链接或 RSS 时直接入库</small></span></button>
+            </div>
+
+            <div id="autoPanel">
+              <div class="mode-switch" role="tablist" aria-label="自动采集模式">
+                <button class="active" data-mode="recent" role="tab" aria-selected="true">最近 N 篇</button>
+                <button data-mode="range" role="tab" aria-selected="false">按日期范围</button>
+                <button data-mode="multi" role="tab" aria-selected="false">多个公众号</button>
+              </div>
+
+              <div class="mode-panel" id="recentPanel">
+                <div class="form-grid two-cols">
+                  <label class="field"><span>公众号名称或文章链接</span><div class="input-with-icon"><svg><use href="#i-search"/></svg><input id="recentAccount" list="accountSuggestions" placeholder="例如：游戏汇总" autocomplete="off"></div><small>首次输入会模拟搜索并匹配公众号</small></label>
+                  <label class="field"><span>采集数量</span><div class="number-input"><button data-step-target="recentCount" data-step="-5" aria-label="减少数量"><svg><use href="#i-minus"/></svg></button><input id="recentCount" type="number" min="1" max="100" value="20"><button data-step-target="recentCount" data-step="5" aria-label="增加数量"><svg><use href="#i-plus"/></svg></button></div><small>建议先少量试采，再逐步增加</small></label>
+                </div>
+              </div>
+
+              <div class="mode-panel hidden" id="rangePanel">
+                <div class="form-grid">
+                  <label class="field"><span>公众号名称或文章链接</span><div class="input-with-icon"><svg><use href="#i-search"/></svg><input id="rangeAccount" list="accountSuggestions" placeholder="例如：游戏汇总" autocomplete="off"></div></label>
+                  <div class="form-grid two-cols">
+                    <label class="field"><span>开始日期</span><div class="input-with-icon"><svg><use href="#i-calendar"/></svg><input id="startDate" type="date" value="2026-10-01"></div></label>
+                    <label class="field"><span>结束日期</span><div class="input-with-icon"><svg><use href="#i-calendar"/></svg><input id="endDate" type="date" value="2026-11-13"></div></label>
+                  </div>
+                </div>
+                <p class="form-note"><svg><use href="#i-alert"/></svg>可采集范围取决于微信读书实际收录，不承诺覆盖公众号全部历史。</p>
+              </div>
+
+              <div class="mode-panel hidden" id="multiPanel">
+                <div class="field"><div class="field-label-row"><span>选择公众号</span><button class="text-btn" id="toggleAccounts">全选</button></div><div class="account-picker" id="accountPicker"></div></div>
+                <label class="field compact-field"><span>每个公众号采集</span><div class="inline-number"><input id="multiCount" type="number" min="1" max="50" value="10"><span>篇</span></div></label>
+              </div>
+            </div>
+
+            <div id="fallbackPanel" class="hidden">
+              <div class="mode-switch fallback-switch" role="tablist" aria-label="导入来源">
+                <button class="active" data-fallback="links" role="tab" aria-selected="true">文章链接</button>
+                <button data-fallback="rss" role="tab" aria-selected="false">RSS / Atom</button>
+                <button data-fallback="opml" role="tab" aria-selected="false">OPML</button>
+              </div>
+              <label class="field"><span id="fallbackLabel">公众号文章链接</span><textarea id="fallbackText" rows="7" placeholder="一行一个链接，例如：&#10;https://mp.weixin.qq.com/s/..."></textarea><small id="fallbackHint">支持批量粘贴，公开文章页采集，不自动发现其他文章。</small></label>
+              <div class="recognition-bar"><svg><use href="#i-file"/></svg><span id="recognitionText">等待粘贴内容</span></div>
+            </div>
+
+            <div class="collect-options">
+              <label class="check-label"><input id="autoAnalyze" type="checkbox" checked><span class="custom-check"><svg><use href="#i-check"/></svg></span><span><strong>入库后自动拆解</strong><small>先生成本地摘要与标签，之后可交给 Trae 优化</small></span></label>
+            </div>
+            <p class="form-error hidden" id="formError" role="alert"></p>
+            <div class="collector-footer">
+              <p><svg><use href="#i-shield"/></svg>串行采集，自动去重，失败不会重复轰炸接口</p>
+              <button class="btn btn-primary btn-lg" id="startBtn"><svg><use href="#i-play"/></svg><span>开始采集</span><svg class="end-icon"><use href="#i-arrow"/></svg></button>
+            </div>
+          </section>
+
+          <aside class="right-rail">
+            <section class="card checklist-card">
+              <div class="small-heading"><h3>采集前检查</h3><span class="status-pill success">本地就绪</span></div>
+              <ul class="checklist">
+                <li id="authCheck"><span class="check-icon pending"><svg><use href="#i-clock"/></svg></span><div><strong>微信读书授权</strong><small id="authCheckText">等待扫码登录</small></div></li>
+                <li><span class="check-icon"><svg><use href="#i-check"/></svg></span><div><strong>本地采集服务</strong><small>微信读书通道已连接</small></div></li>
+                <li><span class="check-icon"><svg><use href="#i-check"/></svg></span><div><strong>知识库可写入</strong><small>自动创建目录并按链接去重</small></div></li>
+              </ul>
+            </section>
+
+            <section class="card summary-card">
+              <div class="small-heading"><h3>本次任务</h3><span class="mono">SUMMARY</span></div>
+              <dl class="task-summary">
+                <div><dt>方式</dt><dd id="summaryMode">最近 N 篇</dd></div>
+                <div><dt>目标</dt><dd id="summaryTarget">待选择公众号</dd></div>
+                <div><dt>预计</dt><dd id="summaryCount">20 篇文章</dd></div>
+                <div><dt>后续</dt><dd id="summaryAfter">下载 → 入库 → 本地拆解</dd></div>
+              </dl>
+              <div class="rate-note"><svg><use href="#i-clock"/></svg><p><strong>平稳模式</strong><br>单任务串行执行，请求自动间隔，遇风控会暂停。</p></div>
+            </section>
+          </aside>
+        </div>
+
+        <section class="card tasks-card reveal" id="tasks">
+          <div class="section-heading"><div><p class="eyebrow">LOCAL JOBS</p><h2>采集任务</h2></div><span class="section-meta" id="taskMeta">1 个进行中的任务</span></div>
+          <div id="activeTask"></div>
+          <div class="history-heading"><span>最近任务</span><span>仅保留本机记录</span></div>
+          <div class="task-history" id="taskHistory"></div>
+        </section>
+
+        <section class="card library-card reveal" id="library">
+          <div class="section-heading library-heading"><div><p class="eyebrow">KNOWLEDGE BASE</p><h2>入库文章</h2></div><button class="btn btn-secondary btn-sm" id="workbenchBtn"><svg><use href="#i-folder"/></svg>打开完整工作台</button></div>
+          <div class="library-toolbar">
+            <label class="search-box"><svg><use href="#i-search"/></svg><input id="articleSearch" type="search" placeholder="搜索标题、摘要或标签"></label>
+            <label class="select-box"><select id="accountFilter" aria-label="按公众号筛选"><option value="all">全部公众号</option></select><svg><use href="#i-chevron"/></svg></label>
+            <span class="filter-result" id="filterResult">8 篇文章</span>
+          </div>
+          <div class="article-table" role="table" aria-label="已入库文章">
+            <div class="article-table-head" role="row"><span>文章</span><span>公众号</span><span>发布日期</span><span>拆解状态</span><span></span></div>
+            <div id="articleRows"></div>
+          </div>
+          <div class="empty-state hidden" id="articleEmpty"><svg><use href="#i-search"/></svg><h3>没有找到匹配的文章</h3><p>试试更换关键词，或清除公众号筛选。</p><button class="btn btn-secondary btn-sm" id="clearFilters">清除筛选</button></div>
+        </section>
+
+        <footer class="page-footer"><span>wechat-loop · 本地内容基础设施</span><span>原型数据仅用于演示，不会发起真实网络请求</span></footer>
+      </div>
+    </main>
+  </div>
+
+  <datalist id="accountSuggestions"></datalist>
+
+  <div class="modal-backdrop hidden" id="loginModal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+    <div class="modal login-modal">
+      <button class="icon-btn modal-close" data-close="loginModal" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+      <div id="loginView">
+        <p class="eyebrow">WEREAD AUTHORIZATION</p><h2 id="loginTitle">连接微信读书</h2><p class="modal-intro">使用微信扫码并确认授权。凭证只保存在本机，不经过第三方服务器。</p>
+        <div class="qr-wrap">
+          <svg class="qr-code" viewBox="0 0 210 210" aria-label="演示二维码">
+            <rect width="210" height="210" rx="8" fill="#fff"/><g fill="#12372E">
+            <path d="M15 15h55v55H15zm8 8v39h39V23zm8 8h23v23H31zM140 15h55v55h-55zm8 8v39h39V23zm8 8h23v23h-23zM15 140h55v55H15zm8 8v39h39v-39zm8 8h23v23H31z"/>
+            <path d="M84 15h10v10H84zM104 15h20v10h-20zM84 35h20v10H84zM114 35h10v20h-10zM84 55h10v20H84zM104 65h20v10h-20zM15 84h10v20H15zM35 84h20v10H35zM65 84h20v20H65zM95 84h10v10H95zM115 84h20v20h-20zM145 84h10v10h-10zM165 84h30v20h-30zM15 114h20v10H15zM45 114h30v10H45zM95 104h20v20H95zM125 114h20v10h-20zM155 114h10v20h-10zM175 114h20v10h-20zM84 134h10v20H84zM104 134h20v10h-20zM134 134h20v20h-20zM164 144h31v10h-31zM84 164h20v10H84zM114 154h10v30h-10zM134 164h20v10h-20zM164 164h10v20h-10zM184 164h11v11h-11zM84 184h10v11H84zM104 194h20v1h-20zM134 184h30v11h-30zM184 184h11v11h-11z"/>
+            </g>
+          </svg>
+          <span class="qr-demo">原型演示二维码</span>
+        </div>
+        <ol class="login-steps"><li>打开手机微信，扫描上方二维码</li><li>确认授权微信读书账号</li><li>返回此页面，状态会自动更新</li></ol>
+        <button class="btn btn-primary btn-block" id="simulateLogin"><svg><use href="#i-check"/></svg><span>模拟扫码并完成授权</span></button>
+      </div>
+      <div id="accountView" class="hidden">
+        <p class="eyebrow">ACCOUNT CONNECTED</p><h2>微信读书已连接</h2>
+        <div class="connected-account"><div class="account-avatar">读</div><div><strong id="modalNickname">内容采集小号</strong><span id="modalVid">VID ···· 4821</span></div><span class="status-pill success">授权有效</span></div>
+        <div class="account-notice"><svg><use href="#i-shield"/></svg><p>批量采集会使用此账号的微信读书会话。遇到凭证过期或人机验证时，需要重新授权。</p></div>
+        <button class="btn btn-danger-ghost btn-block" id="logoutBtn"><svg><use href="#i-logout"/></svg>退出当前账号</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="guideModal" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div class="modal guide-modal">
+      <button class="icon-btn modal-close" data-close="guideModal" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+      <p class="eyebrow">QUICK START</p><h2 id="guideTitle">第一次采集，这样开始</h2>
+      <div class="guide-list">
+        <article><span>1</span><div><h3>先连接微信读书</h3><p>点击页面右上方“扫码登录”。原型中使用模拟授权，正式版会显示真实二维码。</p></div></article>
+        <article><span>2</span><div><h3>先采一个号、少量文章</h3><p>建议选“最近 N 篇”，输入公众号并设置较小数量，确认正文与日期正确。</p></div></article>
+        <article><span>3</span><div><h3>在任务区观察真实结果</h3><p>只有实际正文文件写入成功才算完成；失败、取消和需要验证会单独展示。</p></div></article>
+        <article><span>4</span><div><h3>自动通道受限时用链接或订阅</h3><p>已有文章链接、RSS/Atom 或 OPML 时，切到“链接 / 订阅”即可批量入库。</p></div></article>
+      </div>
+      <button class="btn btn-primary btn-block" data-close="guideModal">知道了，开始采集</button>
+    </div>
+  </div>
+
+  <div class="drawer-backdrop hidden" id="drawerBackdrop"></div>
+  <aside class="article-drawer hidden" id="articleDrawer" aria-label="文章详情">
+    <div class="drawer-head"><span class="status-pill success">已入库</span><button class="icon-btn" id="closeDrawer" aria-label="关闭文章详情"><svg><use href="#i-close"/></svg></button></div>
+    <div id="drawerContent"></div>
+  </aside>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+</body>
+</html>
