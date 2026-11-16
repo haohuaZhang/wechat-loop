@@ -70,3 +70,9 @@ ctx_meta.json
 # ── 系统 ──
 .DS_Store
 Thumbs.db
+
+# ── 临时上传文件（截图、临时 AGENTS.md 副本）──
+.uploads/
+
+# ── 旧静态原型（React + shadcn/ui 版已覆盖）──
+prototypes/
