@@ -6,12 +6,13 @@
  *   - USE_MOCK = true   → 用内置 mock 数据（离线预览时的降级通道）
  *
  * 真实后端（bridge.py + wechat-mp-tools）端点：
+ *   POST   /api/auth/qrcode                     获取扫码登录二维码
+ *   GET    /api/auth/status                     查询扫码登录状态
  *   POST   /api/accounts/search                 搜索公众号（name → fakeid）
  *   POST   /api/articles/collect-latest        启动采集
  *   GET    /api/articles/download-status/<id>  轮询采集进度
  *   GET    /api/articles/history                下载历史（任务列表）
  *   GET    /api/articles/list/<fakeid>         文章列表
- *   GET    /api/auth/status                    扫码登录状态
  *   ── bridge.py 新增 ──
  *   GET    /api/kb                             知识库列表
  *   POST   /api/kb                             新增知识库
@@ -35,7 +36,6 @@ async function fetchJSON(path, options = {}) {
   return res.json()
 }
 
-/** Mock 数据 —— USE_MOCK=false 时全部不返回 */
 const MOCK_KB_LIST = [
   { id: "default", name: "主知识库", path: "loop/knowledge_base.json", isActive: true, articleCount: 128 },
   { id: "game", name: "游戏赛道", path: "loop/kb/game.json", isActive: false, articleCount: 46 },
@@ -57,14 +57,8 @@ const MOCK_ARTICLES = [
 
 function delay(ms) { return new Promise((r) => setTimeout(r, ms)) }
 
-/** 把 wechat-mp-tools 的 history 条目归一化为前端需要的形状 */
 function normalizeHistory(historyItems = []) {
-  const STATUS_MAP = {
-    "completed": "done",
-    "failed": "error",
-    "cancelled": "cancelled",
-    "running": "running",
-  }
+  const STATUS_MAP = { "completed": "done", "failed": "error", "cancelled": "cancelled", "running": "running" }
   return historyItems.map((h) => ({
     id: h.id || h.task_id || String(h._index ?? Math.random()).slice(-6),
     title: `${h.account || h.account_name || "未知"} · ${h.type === "collect_latest" ? "最近采集" : h.type === "batch" ? "批量下载" : h.type || "下载"}`,
@@ -74,16 +68,9 @@ function normalizeHistory(historyItems = []) {
   }))
 }
 
-/** 把 download-status 的内存字典归一化为前端任务卡需要的形状 */
 function normalizeTaskStatus(task, taskId) {
   if (!task) return null
-  const STATUS_MAP = {
-    "running": "running",
-    "completed": "done",
-    "failed": "error",
-    "cancelled": "cancelled",
-    "success": "done",
-  }
+  const STATUS_MAP = { "running": "running", "completed": "done", "failed": "error", "cancelled": "cancelled", "success": "done" }
   const progress = task.progress || 0
   const errorHint = task.error || (task.status === "failed" ? "采集失败" : "")
   return {
@@ -100,8 +87,29 @@ function normalizeTaskStatus(task, taskId) {
 
 export const api = {
   /**
-   * 开始采集 —— 真实流程：搜索公众号拿 fakeid → collect-latest
+   * 获取微信读书扫码登录二维码
+   * 返回 { qrcode_url: "data:image/jpeg;base64,..." 或 "https://open.weixin.qq.com/...", uuid: "..." }
    */
+  async startLogin() {
+    if (USE_MOCK) {
+      await delay(300)
+      return {
+        uuid: "mock-uuid-" + Date.now(),
+        qrcode_url: "https://open.weixin.qq.com/connect/qrcode/mock",
+        login_state: { status: "scanning", message: "模拟二维码" },
+      }
+    }
+    return fetchJSON("/api/auth/qrcode", { method: "POST" })
+  },
+
+  /**
+   * 轮询扫码登录状态
+   */
+  async pollAuthStatus() {
+    if (USE_MOCK) { await delay(100); return { loggedIn: false, login_state: { status: "idle", message: "" } } }
+    return fetchJSON("/api/auth/status")
+  },
+
   async startCollect({ account, count }) {
     if (USE_MOCK) { await delay(400); return { taskId: "task_demo", total: count, account } }
     const searchRes = await fetchJSON("/api/accounts/search", {
@@ -119,9 +127,6 @@ export const api = {
     return { taskId: collectRes.task_id, total: count, account }
   },
 
-  /**
-   * 轮询采集进度 —— 真实端点 GET /api/articles/download-status/<task_id>
-   */
   async pollTaskStatus(taskId) {
     if (USE_MOCK) return null
     try {
@@ -133,9 +138,6 @@ export const api = {
     }
   },
 
-  /**
-   * 任务历史 —— 真实端点 GET /api/articles/history
-   */
   async listTasks() {
     if (USE_MOCK) { await delay(300); return MOCK_TASKS }
     try {
@@ -147,9 +149,6 @@ export const api = {
     }
   },
 
-  /**
-   * 文章列表 —— 真实端点：搜索 fakeid → GET /api/articles/list/<fakeid>
-   */
   async listArticles(params = {}) {
     if (USE_MOCK) {
       await delay(500)
@@ -192,7 +191,6 @@ export const api = {
     }
   },
 
-  /** 知识库列表 —— bridge.py 新增端点 */
   async listKnowledgeBases() {
     if (USE_MOCK) { await delay(200); return MOCK_KB_LIST }
     try {
@@ -203,7 +201,6 @@ export const api = {
     }
   },
 
-  /** 切换活动知识库 —— bridge.py 新增端点 */
   async setActiveKB(id) {
     if (USE_MOCK) { await delay(200); return { ok: true, active: id } }
     return fetchJSON("/api/kb/active", {
@@ -212,7 +209,6 @@ export const api = {
     })
   },
 
-  /** 新增知识库 —— bridge.py 新增端点 */
   async createKB({ name, path }) {
     if (USE_MOCK) { await delay(300); return { id: `kb_${Date.now()}`, name, path, isActive: false, articleCount: 0 } }
     return fetchJSON("/api/kb", {
@@ -221,7 +217,6 @@ export const api = {
     })
   },
 
-  /** 健康检查 */
   async healthCheck() {
     if (USE_MOCK) return { ok: true, mock: true }
     try {

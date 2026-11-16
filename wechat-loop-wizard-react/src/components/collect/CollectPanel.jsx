@@ -18,7 +18,10 @@ import { StatusBadge } from "@/components/common/StatusBadge"
  * @param {'idle'|'collecting'|'completed'|'error'} props.status
  * @param {number} props.progress 0-100
  * @param {string} [props.current]
+ * @param {string} [props.errorMessage]
  * @param {string} [props.className]
+ * @param {boolean} [props.disabled] 外部强制禁用（例如未登录）
+ * @param {string} [props.disabledHint] 禁用原因提示
  */
 export function CollectPanel({
   accountValue,
@@ -30,8 +33,10 @@ export function CollectPanel({
   current,
   errorMessage,
   className,
+  disabled: disabledOverride,
+  disabledHint,
 }) {
-  const disabled = loading || status === "collecting" || !accountValue.trim()
+  const disabled = disabledOverride || loading || status === "collecting" || !accountValue.trim()
 
   return (
     <Card
@@ -102,6 +107,12 @@ export function CollectPanel({
         {status === "error" && errorMessage && (
           <div className="rounded-md border border-[#A94438]/40 bg-[#A94438]/[0.06] px-4 py-2.5 text-sm leading-6 text-[#7d2f26]">
             <strong className="mr-1">采集失败：</strong>{errorMessage}
+          </div>
+        )}
+
+        {disabledOverride && disabledHint && (
+          <div className="rounded-md border border-border bg-surface/40 px-4 py-2.5 text-sm leading-6 text-muted-foreground">
+            <strong className="mr-1 text-[#B8862F]">提示：</strong>{disabledHint}
           </div>
         )}
       </CardContent>
