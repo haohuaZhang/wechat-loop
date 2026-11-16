@@ -4,11 +4,10 @@ import { QualityGate } from "@/components/governance/QualityGate"
 import { DowngradePath } from "@/components/governance/DowngradePath"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { CheckCircle2, XCircle, AlertTriangle, Trash2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { api } from "@/api/client"
+import { CheckCircle2, XCircle, AlertTriangle, Trash2, Plus, Database, Check } from "lucide-react"
 
-/**
- * 设置与诊断页 —— 五项规则总览 + 系统状态 + 防作弊自检
- */
 const SYSTEM_CHECKS = [
   { label: "本机采集服务 127.0.0.1:5200", status: "ok", hint: "flask app_mp.py 进程运行中" },
   { label: "统一知识库 loop/knowledge_base.json", status: "ok", hint: "可写，最近更新 10 分钟前" },
@@ -25,6 +24,41 @@ const STATUS_TONE = {
 }
 
 export function SettingsPage() {
+  const [kbList, setKbList] = React.useState([])
+  const [loadingKB, setLoadingKB] = React.useState(true)
+  const [newName, setNewName] = React.useState("")
+  const [newPath, setNewPath] = React.useState("")
+  const [adding, setAdding] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoadingKB(true)
+    api.listKnowledgeBases()
+      .then((list) => { if (!cancelled) setKbList(list) })
+      .finally(() => { if (!cancelled) setLoadingKB(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  const handleSetActive = async (id) => {
+    const res = await api.setActiveKB(id)
+    if (res.ok) {
+      setKbList((list) => list.map((kb) => ({ ...kb, isActive: kb.id === id })))
+    }
+  }
+
+  const handleAddKB = async () => {
+    if (!newName.trim() || !newPath.trim()) return
+    setAdding(true)
+    try {
+      const kb = await api.createKB({ name: newName.trim(), path: newPath.trim() })
+      setKbList((list) => [...list, kb])
+      setNewName("")
+      setNewPath("")
+    } finally {
+      setAdding(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1">
@@ -66,6 +100,93 @@ export function SettingsPage() {
 
       {/* 通道分级 */}
       <DowngradePath current="L1" onDowngrade={() => {}} />
+
+      {/* 知识库管理 —— API 驱动 */}
+      <Card className="bg-card shadow-card transition-all duration-200 hover:shadow-card-hover">
+        <CardHeader className="gap-2">
+          <CardTitle className="font-serif text-xl font-semibold tracking-tight flex items-center gap-2">
+            <Database className="h-4 w-4 text-primary" />
+            知识库管理
+          </CardTitle>
+          <CardDescription className="text-sm leading-6">
+            切换活动知识库，或新增一个独立知识库用于不同内容赛道隔离。所有切换和新增都会调用 API。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {loadingKB ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-10 rounded-sm border border-border bg-surface/40 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-md border border-border">
+              {kbList.map((kb) => (
+                <li key={kb.id} className="flex items-center gap-3 bg-surface/30 px-4 py-2.5 transition-colors hover:bg-surface/60">
+                  <span className={`inline-flex h-6 w-6 items-center justify-center rounded-sm border ${kb.isActive ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+                    {kb.isActive ? <Check className="h-3.5 w-3.5" /> : <Database className="h-3.5 w-3.5" />}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{kb.name}</span>
+                      {kb.isActive && <Badge variant="secondary" className="rounded-sm text-[10px] px-1.5 py-0">当前</Badge>}
+                    </div>
+                    <div className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                      {kb.path} · {kb.articleCount} 篇
+                    </div>
+                  </div>
+                  {!kb.isActive && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-sm h-7 text-xs active:scale-95"
+                      onClick={() => handleSetActive(kb.id)}
+                    >
+                      切换
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* 新增知识库 */}
+          <div className="flex flex-col gap-2 rounded-sm border border-dashed border-border bg-surface/20 p-3 sm:flex-row sm:items-end">
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="text-[11px] text-muted-foreground">知识库名称</label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="例如：游戏赛道"
+                className="h-9 rounded-sm"
+                aria-label="知识库名称"
+              />
+            </div>
+            <div className="flex-1 flex flex-col gap-1">
+              <label className="text-[11px] text-muted-foreground">文件路径</label>
+              <Input
+                value={newPath}
+                onChange={(e) => setNewPath(e.target.value)}
+                placeholder="loop/kb/game.json"
+                className="h-9 rounded-sm font-mono text-xs"
+                aria-label="知识库路径"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5 rounded-sm active:scale-95"
+              disabled={!newName.trim() || !newPath.trim() || adding}
+              onClick={handleAddKB}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {adding ? "添加中…" : "新增"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 系统状态 */}
       <Card className="bg-card shadow-card transition-all duration-200 hover:shadow-card-hover">

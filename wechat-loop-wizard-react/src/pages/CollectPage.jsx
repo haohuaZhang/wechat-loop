@@ -2,10 +2,17 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { CollectPanel } from "@/components/collect/CollectPanel"
 import { DowngradePath } from "@/components/governance/DowngradePath"
-import { COLLECT_STATUS } from "@/mock/data"
+import { api } from "@/api/client"
+
+const COLLECT_STATUS = {
+  IDLE: "idle",
+  COLLECTING: "collecting",
+  COMPLETED: "completed",
+  ERROR: "error",
+}
 
 /**
- * 采集向导页 —— 自动采集 / 兜底导入 / 通道降级
+ * 采集向导页 —— 调用 API 创建采集任务，实时更新进度
  */
 export function CollectPage() {
   const [account, setAccount] = React.useState("")
@@ -13,10 +20,13 @@ export function CollectPage() {
   const [progress, setProgress] = React.useState(0)
   const [current, setCurrent] = React.useState("")
   const [currentGrade, setCurrentGrade] = React.useState("L1")
+  const [errorMsg, setErrorMsg] = React.useState("")
 
+  // 模拟进度 —— 真实版应轮询 /api/articles/download-status/<task_id>
   React.useEffect(() => {
     if (collectStatus !== COLLECT_STATUS.COLLECTING) return
     setProgress(0)
+    setErrorMsg("")
     const timer = setInterval(() => {
       setProgress((p) => {
         const next = p + 6
@@ -33,10 +43,16 @@ export function CollectPage() {
     return () => clearInterval(timer)
   }, [collectStatus, account])
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!account.trim()) return
     setCollectStatus(COLLECT_STATUS.COLLECTING)
     setCurrent(`正在发现 ${account} 的文章列表…`)
+    try {
+      await api.startCollect({ account, count: 50 })
+    } catch (err) {
+      setErrorMsg(err?.message || "采集启动失败，请检查本机服务是否运行。")
+      setCollectStatus(COLLECT_STATUS.ERROR)
+    }
   }
 
   return (
@@ -57,6 +73,7 @@ export function CollectPage() {
         status={collectStatus}
         progress={progress}
         current={current}
+        errorMessage={errorMsg}
       />
 
       <DowngradePath current={currentGrade} onDowngrade={() => setCurrentGrade("L2")} />

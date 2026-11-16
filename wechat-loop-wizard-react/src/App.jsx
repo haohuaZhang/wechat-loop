@@ -1,6 +1,5 @@
 import * as React from "react"
 import PropTypes from "prop-types"
-import { NavBar } from "@/components/layout/NavBar"
 import { AppShell } from "@/components/layout/AppShell"
 import { useHashRoute } from "@/hooks/useHashRoute"
 
@@ -21,8 +20,9 @@ export default function App() {
   const key = VALID_KEYS.has(path) ? path : "collect"
   const [PageComponent, setPageComponent] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
+  const [animKey, setAnimKey] = React.useState(0)
 
-  // 动态加载页面（纯 React.lazy 风格但保持同步可控）
+  // 动态加载页面
   React.useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -31,6 +31,7 @@ export default function App() {
         if (!cancelled) {
           setPageComponent(() => Comp)
           setLoading(false)
+          setAnimKey((k) => k + 1)
         }
       })
       .catch((err) => {
@@ -40,13 +41,17 @@ export default function App() {
     return () => { cancelled = true }
   }, [key])
 
-  // 移动端隐藏侧栏，桌面端显示
   return (
     <AppShell current={key} onNavigate={navigate}>
       {loading || !PageComponent ? (
         <PageLoading />
       ) : (
-        <PageComponent />
+        <div
+          key={animKey}
+          className="page-enter"
+        >
+          <PageComponent />
+        </div>
       )}
     </AppShell>
   )

@@ -1,29 +1,40 @@
 import * as React from "react"
 import { ArticleList } from "@/components/article/ArticleList"
-import { mockArticles } from "@/mock/data"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { api } from "@/api/client"
 import { ArrowUpDown } from "lucide-react"
 
 /**
- * 入库文章页 —— 搜索、筛选、排序
+ * 入库文章页 —— 调用 API 加载文章列表，支持搜索、筛选、排序
  */
 export function LibraryPage() {
-  const [mode, setMode] = React.useState("data")
+  const [mode, setMode] = React.useState("loading")
   const [query, setQuery] = React.useState("")
   const [filterAccount, setFilterAccount] = React.useState("all")
+  const [articles, setArticles] = React.useState([])
+  const [fetchError, setFetchError] = React.useState("")
 
-  const filtered = React.useMemo(() => {
-    return mockArticles.filter((a) => {
-      const matchQuery = !query.trim() ||
-        a.title.toLowerCase().includes(query.toLowerCase()) ||
-        (a.digest || "").toLowerCase().includes(query.toLowerCase())
-      const matchAccount = filterAccount === "all" || a.account === filterAccount
-      return matchQuery && matchAccount
-    })
+  const accounts = React.useMemo(() => Array.from(new Set(articles.map((a) => a.account))), [articles])
+
+  const loadArticles = React.useCallback(async () => {
+    setMode("loading")
+    setFetchError("")
+    try {
+      const list = await api.listArticles({ query, account: filterAccount })
+      setArticles(list)
+      setMode(list.length ? "data" : "empty")
+    } catch (err) {
+      setFetchError(err?.message || "读取知识库失败")
+      setMode("error")
+    }
   }, [query, filterAccount])
 
-  const accounts = Array.from(new Set(mockArticles.map((a) => a.account)))
+  // 首次加载 + 搜索/筛选变化时重新拉取（带 debounce）
+  React.useEffect(() => {
+    const timer = setTimeout(() => { loadArticles() }, 250)
+    return () => clearTimeout(timer)
+  }, [loadArticles])
 
   return (
     <div className="flex flex-col gap-8">
@@ -70,7 +81,7 @@ export function LibraryPage() {
         </div>
       </div>
 
-      {/* 模式切换 */}
+      {/* 模式切换（演示用，不影响 API 拉取） */}
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface/60 p-2 text-xs text-muted-foreground">
         <span className="mr-2 font-medium text-foreground">演示列表状态：</span>
         {[
@@ -95,16 +106,16 @@ export function LibraryPage() {
         ))}
         {mode === "data" && (
           <span className="ml-auto font-mono tabular-nums">
-            共 {filtered.length} 篇
+            共 {articles.length} 篇
           </span>
         )}
       </div>
 
       <ArticleList
         mode={mode}
-        items={filtered}
-        errorMessage="读取知识库失败，请检查 loop/knowledge_base.json 是否可写。"
-        onRetry={() => { setMode("loading"); setTimeout(() => setMode("data"), 1200) }}
+        items={articles}
+        errorMessage={fetchError || "读取知识库失败，请检查 loop/knowledge_base.json 是否可写。"}
+        onRetry={loadArticles}
         onStartCollect={() => { /* navigate collect */ }}
       />
     </div>

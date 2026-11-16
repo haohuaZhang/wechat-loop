@@ -5,21 +5,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FailureCounter } from "@/components/governance/FailureCounter"
 import { EvidencePanel } from "@/components/governance/EvidencePanel"
 import { HandoffDialog } from "@/components/governance/HandoffDialog"
+import { Skeleton } from "@/components/ui/skeleton"
+import { api } from "@/api/client"
 import { ShieldAlert, Clock, CheckCircle2, AlertTriangle, XCircle } from "lucide-react"
 
-/** 任务场景复用 HomePage 的切换逻辑 */
 const TASK_SCENARIOS = [
   { key: "done", label: "完成", attempts: 0, exitCode: 0, valid: 50, total: 50, errorHint: "" },
   { key: "partial", label: "部分完成", attempts: 1, exitCode: 1, valid: 38, total: 50, errorHint: "部分文章链接已失效。" },
   { key: "running", label: "采集中失败 2 次", attempts: 2, exitCode: null, valid: 13, total: 50, errorHint: "200013：频控冷却 60s" },
   { key: "blocked", label: "已停机（5 次）", attempts: 5, exitCode: null, valid: 11, total: 50, errorHint: "同一频控问题已连续失败 5 次，自动修复已停机" },
   { key: "verifying", label: "需人工验证", attempts: 1, exitCode: null, valid: 5, total: 50, errorHint: "遇到滑块验证，系统无法自动绕过" },
-]
-
-const HISTORY_TASKS = [
-  { id: "task-003", title: "游戏汇总 · 最近 50 篇", status: "done", at: "11-14 18:40" },
-  { id: "task-002", title: "游戏研究社 · 最近 30 篇", status: "done", at: "11-12 09:15" },
-  { id: "task-001", title: "手游那点事 · 按日期 10月", status: "error", at: "11-10 14:20" },
 ]
 
 const STATUS_VARIANT = {
@@ -32,6 +27,17 @@ const STATUS_VARIANT = {
 
 export function TasksPage() {
   const [task, setTask] = React.useState(TASK_SCENARIOS[0])
+  const [history, setHistory] = React.useState([])
+  const [loadingHistory, setLoadingHistory] = React.useState(true)
+
+  React.useEffect(() => {
+    let cancelled = false
+    setLoadingHistory(true)
+    api.listTasks()
+      .then((list) => { if (!cancelled) setHistory(list) })
+      .finally(() => { if (!cancelled) setLoadingHistory(false) })
+    return () => { cancelled = true }
+  }, [])
 
   const handoffReason =
     task.key === "blocked"
@@ -161,27 +167,42 @@ export function TasksPage() {
         </CardContent>
       </Card>
 
-      {/* 最近任务列表 */}
+      {/* 最近任务列表 —— 来自 API */}
       <section className="flex flex-col gap-3">
         <h2 className="font-serif text-xl font-semibold tracking-tight">最近任务</h2>
-        <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
-          {HISTORY_TASKS.map((t) => {
-            const v = STATUS_VARIANT[t.status]
-            const I = v.icon
-            return (
-              <li key={t.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface/60">
-                <span className={`inline-flex h-6 w-6 items-center justify-center rounded-sm border ${v.cls}`}>
-                  <I className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="truncate text-sm font-medium">{t.title}</div>
-                  <div className="font-mono text-[11px] text-muted-foreground tabular-nums">{t.id} · {t.at}</div>
+        {loadingHistory ? (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-3">
+                <Skeleton className="h-6 w-6 rounded-sm" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-3.5 w-48" />
+                  <Skeleton className="h-3 w-24" />
                 </div>
-                <Badge variant="outline" className={`rounded-sm text-[11px] ${v.cls}`}>{v.label}</Badge>
-              </li>
-            )
-          })}
-        </ul>
+                <Skeleton className="h-5 w-16 rounded-sm" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
+            {history.map((t) => {
+              const v = STATUS_VARIANT[t.status]
+              const I = v.icon
+              return (
+                <li key={t.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface/60">
+                  <span className={`inline-flex h-6 w-6 items-center justify-center rounded-sm border ${v.cls}`}>
+                    <I className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm font-medium">{t.title}</div>
+                    <div className="font-mono text-[11px] text-muted-foreground tabular-nums">{t.id} · {t.at}</div>
+                  </div>
+                  <Badge variant="outline" className={`rounded-sm text-[11px] ${v.cls}`}>{v.label}</Badge>
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </section>
     </div>
   )
