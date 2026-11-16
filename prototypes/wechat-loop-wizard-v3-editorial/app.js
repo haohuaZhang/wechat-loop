@@ -13,7 +13,8 @@
     activeTask: DB.tasks.find((item) => item.status === "running") || null,
     timer: null,
     recognizedCount: 0,
-    loading: false
+    loading: false,
+    handoffTaskId: null
   };
 
   const statusMap = {
@@ -357,14 +358,45 @@
 
   function renderFailure(task) {
     if (!task.errorCode) return "";
+    const label = task.status === "blocked" ? "循环停机" : task.status === "error" ? "采集失败" : task.status === "verifying" ? "人工接管" : "部分完成";
     return `<div class="failure-box">
-      <div class="failure-head">${icon("alert")}<strong>失败归因</strong><span class="status-pill ${task.status === "error" ? "danger" : "warning"}">${task.status === "error" ? "采集失败" : "部分完成"}</span></div>
+      <div class="failure-head">${icon("alert")}<strong>失败归因</strong><span class="status-pill ${task.status === "error" || task.status === "blocked" ? "danger" : "warning"}">${label}</span></div>
       <dl class="failure-list">
         <div><dt>错误码</dt><dd class="mono">${esc(task.errorCode)}</dd></div>
         <div><dt>原因</dt><dd>${esc(task.current)}</dd></div>
-        <div><dt>建议动作</dt><dd>${esc(task.errorHint || "降低采集数量，等待冷却后重试。")}</dd></div>
+        <div><dt>下一步</dt><dd>${esc(task.errorHint || "降低采集数量，等待冷却后重试。")}</dd></div>
       </dl>
     </div>`;
+  }
+
+  function renderAttemptGuard(task) {
+    if (!["error", "blocked"].includes(task.status)) return "";
+    const attempts = Math.max(0, Number(task.attempts) || 0);
+    const stopped = task.status === "blocked" || attempts >= 5;
+    const rule = stopped ? "已停机：禁止原路径重试" : attempts >= 3 ? "必须更换假设，不得重复上一次操作" : "可自主修复，但必须记录本次假设";
+    return `<div class="attempt-guard${stopped ? " stopped" : ""}">
+      <div class="attempt-copy"><strong>同一问题连续失败 ${attempts}/5</strong><span>${rule}</span></div>
+      <div class="attempt-dots" aria-label="失败 ${attempts} 次，上限 5 次">${Array.from({ length: 5 }, (_, index) => `<i class="${index < attempts ? "filled" : ""}"></i>`).join("")}</div>
+    </div>`;
+  }
+
+  function renderEvidence(task) {
+    if (!["done", "partial"].includes(task.status)) return "";
+    const partial = task.status === "partial";
+    const command = `python3 scripts/verify_ingest.py --task ${task.id}`;
+    return `<details class="evidence-box" open>
+      <summary><span>${icon(partial ? "alert" : "check")}完成证据</span><span class="status-pill ${partial ? "warning" : "success"}">${partial ? "证据未完整" : "证据通过"}</span></summary>
+      <div class="evidence-body">
+        <div class="evidence-command"><code>$ ${esc(command)}</code><span class="mono">exit ${partial ? 1 : 0}</span></div>
+        <dl class="evidence-list">
+          <div><dt>非空正文</dt><dd>${task.completed}/${task.total} 个 .md 文件${partial ? `，${task.failed} 个缺失` : "，全部校验通过"}</dd></div>
+          <div><dt>入库路径</dt><dd class="mono">loop/kb/${esc(task.accountNames[0])}/</dd></div>
+          <div><dt>知识库记录</dt><dd class="mono">loop/knowledge_base.json · ${task.completed} 条</dd></div>
+          <div><dt>结论</dt><dd>${partial ? "只能标记部分完成，不得声称全部成功" : "正文文件真实存在且非空，允许标记完成"}</dd></div>
+        </dl>
+        <p class="evidence-demo">演示证据；正式版由本机校验命令生成，不采用 mock 结果。</p>
+      </div>
+    </details>`;
   }
 
   function renderActiveTask() {
