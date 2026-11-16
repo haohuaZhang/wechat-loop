@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 # ── 中文分词（极简版，按标点 + 空格切，够 TF-IDF 用） ──────────────
-_PUNCT = re.compile(r"[\s，。！？、；：""''（）《》…—/\n\\t-]+")
+_PUNCT = re.compile(r"[\s，。！？、；：""''（）《》…—/\n\t-]+")
 
 
 def _tokenize(text: str) -> list[str]:

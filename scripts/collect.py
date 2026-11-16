@@ -1,23 +1,22 @@
-"""wechat-loop 采集模块 — 整合 wechat-digest-skill 逻辑 + 自己号 material API + Playwright cookies。
+"""wechat-loop 采集模块 — 基于 wechat-digest-skill 二次开发，把目标公众号的历史文章采进知识库。
 
-两条采集路径：
-  1. 自己号（推荐）：material/batchget_material — 走 access_token（AppID/Secret）。
-     不碰 cookie，频控更松，个人号也能用。
-  2. 竞品号：/cgi-bin/appmsg + searchbiz — 走 mp后台 token + cookie。
+知识库的文章来源是**任意目标公众号**（不限于自己运营的号），两条采集路径：
+  1. 目标号（知识库主路径）：/cgi-bin/appmsg + searchbiz — 走 mp后台 token + cookie。
      需要先登录 mp.weixin.qq.com 拿到 token（URL 里）和整行 cookie（F12），
      或等 Phase 1.2 跑 auth.py login 后读 cookies.json（Playwright 持久化格式）。
+  2. 自己号（可选，用于复盘自己发过的内容）：material/batchget_material —
+     走 access_token（AppID/Secret），不碰 cookie，频控更松。
 
 输出: 直接更新 loop/knowledge_base.json + loop/kb/{account}/{slug}.md
 
 用法:
-    # 自己号（推荐，先把 AppID/Secret 填进 config.env）
-    python3 scripts/collect.py self --count 20
-
-    # 竞品号（需要 token + cookie）
+    # 采集目标公众号历史文章（知识库主路径，先把 token+cookie 配好）
     python3 scripts/collect.py "影视风" --count 10 --since 2026-01-01
 
-    # 从 credentials.json 读（和 wechat-digest-skill 兼容）
-    python3 scripts/collect.py self --credentials ../wechat-digest-skill/credentials.json
+    # 自己号（可选，先把 AppID/Secret 填进 config.env）
+    python3 scripts/collect.py self --count 20
+
+    # credentials.json 会自动读取（../wechat-digest-skill/credentials.json），无需额外参数
 """
 from __future__ import annotations
 
@@ -34,7 +33,6 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 import requests
-import trafilatura
 
 ROOT = Path(__file__).resolve().parent.parent
 PROFILE_DIR = os.environ.get("CHROME_PROFILE", str(Path.home() / ".chrome-profile"))
@@ -167,7 +165,7 @@ def fetch_self_articles(access_token: str, count: int = 20) -> list[dict]:
     articles = []
     begin = 0
     while begin < count:
-        r = requests.get(
+        r = requests.post(
             "https://api.weixin.qq.com/cgi-bin/material/batchget_material",
             params={"access_token": access_token},
             json={"type": "news", "offset": begin, "count": min(20, count - begin)},
@@ -245,7 +243,11 @@ def search_biz(session, token, name) -> tuple[str, str]:
 
 
 def fetch_content(url: str) -> str:
-    """抓单篇正文 HTML → 清洗。用 trafilatura。"""
+    """抓单篇正文 HTML → 清洗。用 trafilatura（lazy import，--help 不依赖）。"""
+    try:
+        import trafilatura
+    except ImportError as e:
+        raise RuntimeError("缺少依赖 trafilatura —— 运行: pip install trafilatura") from e
     for attempt in range(CONTENT_RETRIES):
         polite_sleep(CONTENT_DELAY_MIN, CONTENT_DELAY_MAX)
         try:

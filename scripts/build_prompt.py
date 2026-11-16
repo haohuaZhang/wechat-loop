@@ -24,7 +24,7 @@ PROMPT_TEMPLATE = """# ═══ wechat-loop 写作 prompt ═══
 
 {{PERSONA_YAML}}
 
-## 4. 写作规范（reading-guide.md 摘要，Agent 必须全部遵守）
+## 4. 写作规范（writing-guide.md 摘要，Agent 必须全部遵守）
 
 ### 硬性规则
 - 禁用词: 首先/其次/总之/让我们/值得注意/综上所述/显而易见... 命中 0 个

@@ -11,10 +11,10 @@ compute_next_keyword，和 publish_draft.py 共用 cookies.json 持久化登录�
   5. set_auto_reply（关键词 = YYYYMMDD，回复 = 预设的站点列表）
   6. 更新 history.json
 
-回复内容默认读 config.env 的 WECHAT_KEYWORD_REPLY，没配就用内置的影视站清单。
+回复内容读 config.env 的 WECHAT_KEYWORD_REPLY（或用 --reply-file 指定），没配则报错退出。
 
 用法:
-    python3 scripts/set_keyword.py                       # 自动算明天日期 + 默认回复
+    python3 scripts/set_keyword.py                       # 自动算明天日期 + config.env 里的回复
     python3 scripts/set_keyword.py --date 20261113       # 手动指定日期
     python3 scripts/set_keyword.py --reply-file sites.txt # 自定义回复内容
 """
@@ -32,12 +32,8 @@ WECHAT_FLOW_FILM = ROOT.parent / "wechat-flow-film"
 COOKIES_PATH = WECHAT_FLOW_FILM / "cookies.json"
 HISTORY_PATH = ROOT / "loop" / "history.json"
 
-# 默认回复 —— 上次用户确认过的影视站清单
-DEFAULT_REPLY = """影视资源合集：
-https://www.cbhu.net.cn/
-https://cbhh.net.cn/
-https://4kvm.tv
-https://baipiaozhe.ai"""
+# 回复内容不入代码 —— 从 --reply-file / config.env / 环境变量读取
+DEFAULT_REPLY = ""
 
 
 def load_history() -> list[dict]:
@@ -58,7 +54,7 @@ def last_keyword_date() -> str | None:
 
 
 def load_reply_content(reply_file: str = "") -> str:
-    """回复内容优先级: --reply-file > config.env > 默认清单。"""
+    """回复内容优先级: --reply-file > config.env > 环境变量。都没配返回空串。"""
     if reply_file and Path(reply_file).exists():
         return Path(reply_file).read_text(encoding="utf-8").strip()
 
@@ -156,6 +152,10 @@ def main():
         print(f"[set_keyword] last_date={last!r} → next={keyword_date}")
 
     reply_text = load_reply_content(args.reply_file)
+    if not reply_text:
+        print("[set_keyword] ❌ 未配置回复内容 —— 在 config.env 设置 WECHAT_KEYWORD_REPLY，"
+              "或用 --reply-file 指定文本文件", file=sys.stderr)
+        sys.exit(1)
 
     try:
         result = run(keyword_date, reply_text, headless=args.headless)

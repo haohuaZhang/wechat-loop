@@ -10,6 +10,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+# 复用 bootstrap.sh 装好的工具链（有就切，没有就继续用系统 Python）
+[[ -f "$ROOT/tools/gate/activate.sh" ]] && source "$ROOT/tools/gate/activate.sh"
+
 PASS=0
 FAIL=0
 WARN=0
@@ -52,6 +55,10 @@ bash -n scripts/run_daily.sh 2>/dev/null && pass "run_daily.sh 语法 OK" || fai
 python3 scripts/extract_exemplar.py --list >/dev/null 2>&1 \
     && pass "extract_exemplar.py" || fail "extract_exemplar.py"
 
+# wizard_server --help（纯标准库，只解析参数不启动服务）
+python3 scripts/wizard_server.py --help >/dev/null 2>&1 \
+    && pass "wizard_server.py" || fail "wizard_server.py"
+
 # ── 3. 上游依赖检查 ──────────────────────────────────────────
 echo ""
 echo "③ 上游仓库 & 依赖"
@@ -93,7 +100,50 @@ else
     warn "Playwright chromium 未装 — 等 Phase 1.2 扫码登录前再装"
 fi
 
-# ── 6. 汇总 ──────────────────────────────────────────────────
+# ── 6. 失败循环 & 防作弊（AGENTS.md 机制 1 / 机制 5）──────────
+echo ""
+echo "⑥ 失败循环 & 防作弊"
+
+if [[ -f loop/loop-counter.json ]]; then
+    if python3 - <<'PY'
+import json, sys
+try:
+    data = json.load(open("loop/loop-counter.json"))
+except Exception as exc:
+    print(f"  ❌ loop-counter.json 解析失败: {exc}")
+    sys.exit(2)
+over = {k: v.get("count", 0) for k, v in data.items()
+        if isinstance(v, dict) and (v.get("count") or 0) >= 5}
+for key, count in sorted(over.items()):
+    print(f"  ❌ {key} 连续失败 {count} 次 — 必须停机换方案")
+sys.exit(1 if over else 0)
+PY
+    then
+        pass "失败循环未超限"
+    else
+        fail "同一问题连续失败 ≥5 次（AGENTS.md 机制 1：停机换方案）"
+    fi
+else
+    warn "loop/loop-counter.json 不存在 — 首次出现重复失败时创建"
+fi
+
+FORGERY=$(grep -rnE '\.(skip|xfail|only)\(|pytest\.mark\.skip|it\.skip|test\.skip' tests scripts 2>/dev/null || true)
+if [[ -n "$FORGERY" ]]; then
+    echo "$FORGERY" | head -5
+    fail "发现 skip/xfail/only（AGENTS.md 机制 5）"
+else
+    pass "无 skip/xfail/only"
+fi
+
+MASQUERADE=$(grep -rn -- '|| true' scripts 2>/dev/null | grep -vE 'grep|command -v|which ' || true)
+if [[ -n "$MASQUERADE" ]]; then
+    echo "$MASQUERADE" | head -5
+    warn "脚本中存在 || true，请人工确认不是掩盖失败"
+else
+    pass "无 || true 掩码"
+fi
+
+# ── 7. 汇总 ──────────────────────────────────────────────────
 echo ""
 echo "═══ 汇总 ═══"
 echo "  ✅ PASS: $PASS"
