@@ -1,0 +1,3 @@
+[submodule "wechat-mp-tools"]
+	path = wechat-mp-tools
+	url = https://github.com/x554960766/wechat-mp-tools.git
