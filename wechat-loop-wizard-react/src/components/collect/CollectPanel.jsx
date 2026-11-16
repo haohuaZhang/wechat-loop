@@ -28,6 +28,7 @@ export function CollectPanel({
   status,
   progress,
   current,
+  errorMessage,
   className,
 }) {
   const disabled = loading || status === "collecting" || !accountValue.trim()
@@ -97,6 +98,12 @@ export function CollectPanel({
             current={current}
           />
         )}
+
+        {status === "error" && errorMessage && (
+          <div className="rounded-md border border-[#A94438]/40 bg-[#A94438]/[0.06] px-4 py-2.5 text-sm leading-6 text-[#7d2f26]">
+            <strong className="mr-1">采集失败：</strong>{errorMessage}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -110,5 +117,6 @@ CollectPanel.propTypes = {
   status: PropTypes.oneOf(["idle", "collecting", "completed", "error"]).isRequired,
   progress: PropTypes.number.isRequired,
   current: PropTypes.string,
+  errorMessage: PropTypes.string,
   className: PropTypes.string,
 }
