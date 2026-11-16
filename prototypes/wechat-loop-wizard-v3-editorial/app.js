@@ -333,7 +333,7 @@
   }
 
   function taskIcon(status) {
-    return { running: "refresh", done: "check", error: "alert", verifying: "shield", partial: "alert", cancelled: "clock" }[status] || "clock";
+    return { running: "refresh", done: "check", error: "alert", verifying: "shield", partial: "alert", blocked: "shield", cancelled: "clock" }[status] || "clock";
   }
 
   function renderQueueBar() {
@@ -411,13 +411,17 @@
     const action = running
       ? `<button class="btn btn-secondary btn-sm" data-task-action="cancel">取消任务</button>`
       : task.status === "verifying"
-        ? `<button class="btn btn-secondary btn-sm" data-task-action="verify">${icon("shield")}去处理验证</button>`
-        : task.status === "error"
-          ? `<button class="btn btn-secondary btn-sm" data-task-action="auth">重新授权</button>`
-          : `<button class="btn btn-secondary btn-sm" data-task-action="repeat">${icon("refresh")}再次采集</button>`;
-    const attemptNote = Number(task.attempts) >= 3
-      ? `<p class="attempt-note">${icon("alert")}<span>连续失败 ${Number(task.attempts)} 次，建议改用手动链接导入，避免继续重试触发更严格限流。</span></p>`
-      : "";
+        ? `<button class="btn btn-secondary btn-sm" data-task-action="verify">${icon("shield")}接管验证</button>`
+        : task.status === "blocked"
+          ? `<button class="btn btn-secondary btn-sm" data-task-action="downgrade">${icon("link")}改用 L2 链接导入</button>`
+          : task.status === "error"
+            ? `<button class="btn btn-secondary btn-sm" data-task-action="downgrade">${icon("link")}改走兜底通道</button>`
+            : `<button class="btn btn-secondary btn-sm" data-task-action="repeat">${icon("refresh")}再次采集</button>`;
+    const notice = task.status === "blocked"
+      ? `<p class="attempt-note stopped">${icon("shield")}<span>已停机：原通道禁止继续重试。请改用 L2 链接导入，或由你确认下一步。</span></p>`
+      : task.status === "verifying"
+        ? `<p class="attempt-note">${icon("shield")}<span>检测到人机校验，任务已暂停。L4 操作需由你在本机完成，程序不会自动绕过。</span></p>`
+        : "";
     container.innerHTML = `<article class="active-task ${esc(task.status)}">
       <div class="task-top">
         <div><div class="task-title-line"><strong>${esc(task.accountNames.join("、"))} · ${esc(task.mode)}</strong><span class="status-pill ${status.className}">${status.label}</span>${task.demo ? `<span class="status-pill neutral">演示任务</span>` : ""}</div><p class="task-subtitle">任务 ${esc(task.id)} · ${esc(task.createdAt)}</p></div>
@@ -428,7 +432,9 @@
       ${renderStages(task)}
       <p class="task-current">${icon(taskIcon(task.status))}<span>${esc(task.current)}</span></p>
       <div class="task-counts"><span>总数 <strong>${task.total}</strong></span><span>已完成 <strong>${task.completed}</strong></span><span>失败 <strong>${task.failed}</strong></span><span>状态 <strong>${status.label}</strong></span></div>
-      ${attemptNote}
+      ${notice}
+      ${renderAttemptGuard(task)}
+      ${renderEvidence(task)}
       ${renderFailure(task)}
     </article>`;
   }
@@ -439,11 +445,12 @@
       const status = taskStatus(task);
       const retryLabel = task.status === "error" ? "带回参数重试" : "再次采集";
       const canRepeat = task.status === "error" || task.status === "partial";
+      const stopped = task.status === "blocked";
       return `<div class="task-history-row" data-select-task="${esc(task.id)}">
-        <div><strong>${esc(task.accountNames.join("、"))} · ${esc(task.mode)}</strong><small>${task.completed}/${task.total} 篇完成${task.failed ? ` · ${task.failed} 篇失败` : " · 已自动去重"}${Number(task.attempts) >= 3 ? " · 连续失败 3 次" : ""}</small></div>
+        <div><strong>${esc(task.accountNames.join("、"))} · ${esc(task.mode)}</strong><small>${task.completed}/${task.total} 篇完成${task.failed ? ` · ${task.failed} 篇失败` : " · 已自动去重"}${Number(task.attempts) >= 3 ? ` · 连续失败 ${Number(task.attempts)} 次` : ""}</small></div>
         <div class="history-time">${esc(task.createdAt)}</div>
         <span class="status-pill ${status.className}">${status.label}</span>
-        ${canRepeat ? `<button class="text-btn" data-retry="${esc(task.id)}">${retryLabel}</button>` : `<span></span>`}
+        ${stopped ? `<button class="text-btn" data-downgrade="${esc(task.id)}">改用链接导入</button>` : canRepeat ? `<button class="text-btn" data-retry="${esc(task.id)}">${retryLabel}</button>` : `<span></span>`}
       </div>`;
     }).join("");
   }
@@ -774,6 +781,62 @@
     toast("已带回上次任务参数", task.status === "error" ? "重新授权后即可开始。 " : "确认参数后可创建新任务。 ");
   }
 
+  function openHandoff(task) {
+    state.handoffTaskId = task ? task.id : null;
+    $("#handoffTask").textContent = task
+      ? `${task.accountNames.join("、")} · ${task.mode}：检测到人机校验，任务已暂停。`
+      : "检测到人机校验，自动任务已暂停。";
+    openModal("handoffModal");
+  }
+
+  function confirmHandoff() {
+    const task = DB.tasks.find((item) => item.id === state.handoffTaskId);
+    closeModal("handoffModal");
+    if (!task) return;
+    task.status = "running";
+    task.current = "人工验证已完成，任务从中断处继续（模拟）";
+    task.errorCode = null;
+    task.errorHint = "";
+    state.activeTask = task;
+    renderTasks();
+    toast("任务已恢复", "原型仅切换状态，正式版会重新检查授权后再继续。 ");
+  }
+
+  function applyDowngrade() {
+    setSource("fallback");
+    setFallbackType("links");
+    switchView("collect");
+    updateSummary();
+    clearError();
+    toast("已切换到 L2 链接导入", "L1 通道不再重试；粘贴文章链接后即可继续入库。 ");
+    const panel = $("#fallbackText");
+    if (panel) panel.focus({ preventScroll: true });
+  }
+
+  async function runQualityGate() {
+    const button = $("#runGateBtn");
+    const results = $("#gateResults");
+    if (!button || !results) return;
+    button.disabled = true;
+    results.innerHTML = `<div class="gate-empty">正在运行本机检查…</div>`;
+    const response = await api.runQualityGate();
+    button.disabled = false;
+    if (!response.ok) {
+      results.innerHTML = `<p class="form-error">自检未返回结果。</p>`;
+      return;
+    }
+    const data = response.data;
+    results.innerHTML = `
+      <div class="gate-summary"><span class="mono">$ ${esc(data.command)}</span><span class="status-pill ${data.exitCode === 0 ? "success" : "danger"}">exit ${data.exitCode} · ${esc(data.duration)}</span></div>
+      <ul class="gate-list">${data.checks.map((check) => `
+        <li class="${esc(check.status)}">
+          <span class="gate-icon">${icon(check.status === "pass" ? "check" : "alert")}</span>
+          <div><strong>${esc(check.label)}</strong><small>${esc(check.detail)}</small></div>
+        </li>`).join("")}
+      </ul>
+      <p class="gate-note">模拟结果。正式版直接读取 verify.sh 的退出码，不手写成功。</p>`;
+  }
+
   function bindEvents() {
     $$("[data-source]").forEach((button) => button.addEventListener("click", () => setSource(button.dataset.source)));
     $$("[data-mode]").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
@@ -844,12 +907,22 @@
       } else if (action === "auth") {
         openModal("loginModal");
       } else if (action === "verify") {
-        toast("需要人工完成验证", "扫码 / 滑块属于 L4 操作，请在本机浏览器完成后再继续。", "error");
+        openHandoff(state.activeTask);
+      } else if (action === "downgrade") {
+        applyDowngrade();
       } else if (action === "repeat") {
         restoreTask(state.activeTask);
       }
     });
+    $("#downgradeBtn").addEventListener("click", applyDowngrade);
+    $("#confirmHandoff").addEventListener("click", confirmHandoff);
+    $("#runGateBtn").addEventListener("click", runQualityGate);
     $("#taskHistory").addEventListener("click", (event) => {
+      const downgrade = event.target.closest("[data-downgrade]");
+      if (downgrade) {
+        applyDowngrade();
+        return;
+      }
       const button = event.target.closest("[data-retry]");
       if (button) {
         const retryTask = DB.tasks.find((item) => item.id === button.dataset.retry);

@@ -850,3 +850,90 @@ h1 em { color: var(--text); }
   .stage-bar { border: 0; }
   .stage { border-bottom: 1px solid var(--border); }
 }
+
+/* v4 机制：通道降级、失败循环、人工接管、证据与防作弊 */
+.grade-row { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.grade-row:last-child { border-bottom: 0; }
+.grade-row strong { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+.grade-row small { display: block; margin-top: 2px; color: var(--text-sub); font-size: 11px; line-height: 1.7; }
+.grade-row.current { background: rgba(164, 61, 42, .035); }
+.grade-row.grade-blocked { opacity: .78; }
+.grade-current { padding: 0 5px; border: 1px solid var(--border); color: var(--text-sub); font-size: 9px; font-weight: 400; letter-spacing: .04em; }
+.grade-pill.l4 { border-color: var(--danger); color: var(--danger); }
+.downgrade-btn { margin-top: 10px; }
+
+.active-task.blocked { border-top-color: var(--danger); }
+.active-task.verifying { border-top-color: var(--warning); }
+.attempt-note.stopped { border-left: 2px solid var(--danger); color: var(--danger); background: var(--danger-soft); }
+.attempt-guard { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; padding: 10px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.attempt-copy { display: flex; flex-direction: column; gap: 2px; }
+.attempt-copy strong { font-size: 11px; font-weight: 600; }
+.attempt-copy span { color: var(--text-sub); font-size: 10px; }
+.attempt-dots { display: flex; gap: 4px; }
+.attempt-dots i { display: block; width: 16px; height: 3px; background: #d9d2c5; }
+.attempt-dots i.filled { background: var(--warning); }
+.attempt-guard.stopped .attempt-copy strong { color: var(--danger); }
+.attempt-guard.stopped .attempt-dots i.filled { background: var(--danger); }
+
+.evidence-box { margin-top: 14px; border: 1px solid var(--border); background: var(--surface-soft); }
+.evidence-box > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; cursor: pointer; list-style: none; font-size: 11px; font-weight: 600; }
+.evidence-box > summary::-webkit-details-marker { display: none; }
+.evidence-box > summary span:first-child { display: inline-flex; align-items: center; gap: 6px; }
+.evidence-body { padding: 0 12px 12px; }
+.evidence-command { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); background: var(--surface); }
+.evidence-command code { font: 10px/1.6 var(--font-mono); overflow-wrap: anywhere; }
+.evidence-list { display: grid; gap: 6px; margin: 10px 0 0; }
+.evidence-list > div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; font-size: 11px; }
+.evidence-list dt { color: var(--text-sub); }
+.evidence-list dd { margin: 0; overflow-wrap: anywhere; }
+.evidence-demo { margin-top: 8px; color: var(--text-sub); font-size: 10px; }
+
+.governance-card { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 32px; margin-top: 16px; padding: 28px; }
+.governance-rules h2 { margin: 4px 0 6px; font-family: var(--font-display); font-size: 21px; font-weight: 600; }
+.governance-rules > p { color: var(--text-sub); font-size: 11px; }
+.protocol-list { display: grid; gap: 0; margin: 16px 0 0; padding: 0; border-top: 1px solid var(--border); list-style: none; }
+.protocol-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.protocol-list li > span { color: var(--primary); font: 10px/1.8 var(--font-mono); }
+.protocol-list strong { display: block; font-size: 12px; font-weight: 600; }
+.protocol-list small { display: block; margin-top: 1px; color: var(--text-sub); font-size: 11px; line-height: 1.7; }
+.quality-gate { padding-left: 32px; border-left: 1px solid var(--border); }
+.quality-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--text); }
+.quality-head h3 { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.quality-head p { color: var(--text-sub); font-size: 10px; }
+.gate-results { margin-top: 14px; }
+.gate-empty { padding: 18px 0; color: var(--text-sub); font-size: 11px; }
+.gate-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--border); background: var(--surface-soft); font-size: 10px; }
+.gate-summary .mono { overflow-wrap: anywhere; }
+.gate-list { display: grid; gap: 0; margin: 10px 0 0; padding: 0; list-style: none; }
+.gate-list li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.gate-list strong { display: block; font-size: 11px; font-weight: 600; }
+.gate-list small { display: block; color: var(--text-sub); font-size: 10px; }
+.gate-icon { color: var(--success); }
+.gate-list li.fail .gate-icon { color: var(--danger); }
+.gate-note { margin-top: 8px; color: var(--text-sub); font-size: 10px; }
+
+.handoff-modal { width: min(100%, 460px); }
+.handoff-modal h2 { margin: 6px 0 8px; font-family: var(--font-display); font-size: 22px; font-weight: 600; }
+.modal-intro { color: var(--text-sub); font-size: 11px; }
+.handoff-stop { display: flex; gap: 10px; margin: 14px 0; padding: 10px 12px; border-left: 2px solid var(--danger); background: var(--danger-soft); font-size: 11px; }
+.handoff-stop svg { flex: 0 0 auto; width: 16px; height: 16px; color: var(--danger); }
+.handoff-stop p { color: var(--text-sub); }
+.handoff-steps { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; }
+.handoff-steps li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; font-size: 11px; }
+.handoff-steps li > span { width: 18px; height: 18px; border: 1px solid var(--border); color: var(--text-sub); font: 10px/17px var(--font-mono); text-align: center; }
+.handoff-checklist { margin-bottom: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.handoff-checklist strong { display: block; margin-bottom: 2px; font-size: 11px; }
+.handoff-checklist p { color: var(--text-sub); font-size: 10px; line-height: 1.8; }
+
+@media (max-width: 1024px) {
+  .governance-card { grid-template-columns: 1fr; }
+  .quality-gate { padding-left: 0; border-left: 0; border-top: 1px solid var(--border); padding-top: 20px; }
+}
+@media (max-width: 480px) {
+  .grade-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .attempt-guard { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .evidence-list > div { grid-template-columns: 1fr; gap: 0; }
+  .governance-card { padding: 18px 16px; }
+  .quality-head { flex-direction: column; }
+  .quality-head .btn { width: 100%; }
+}
