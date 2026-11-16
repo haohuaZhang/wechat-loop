@@ -81,6 +81,29 @@ window.MockDB = {
       logs: []
     },
     {
+      id: "task-demo-blocked",
+      mode: "最近 50 篇",
+      accountNames: ["游戏汇总"],
+      total: 50,
+      completed: 11,
+      failed: 39,
+      status: "blocked",
+      progress: 22,
+      createdAt: "昨天 18:40",
+      current: "同一频控问题已连续失败 5 次，自动修复已停机",
+      attempts: 5,
+      errorCode: "200013",
+      errorHint: "不得继续原路径重试。请改用文章链接导入，或等待人工检查后决定下一步。",
+      autoAnalyze: true,
+      stages: [
+        { name: "发现文章", done: 50, total: 50 },
+        { name: "下载正文", done: 11, total: 50 },
+        { name: "入库去重", done: 11, total: 50 },
+        { name: "本地拆解", done: 0, total: 50 }
+      ],
+      logs: ["第 3 次失败：已要求更换修复假设", "第 5 次失败：触发停机保护"]
+    },
+    {
       id: "task-demo-links",
       mode: "批量文章链接",
       accountNames: ["手动链接"],

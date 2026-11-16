@@ -22,6 +22,7 @@
     error: { label: "需处理", className: "danger" },
     verifying: { label: "需人工验证", className: "warning" },
     partial: { label: "部分完成", className: "info" },
+    blocked: { label: "已停机", className: "danger" },
     cancelled: { label: "已取消", className: "neutral" }
   };
   const VIEW_TITLES = { collect: "新建采集", tasks: "任务记录", library: "文章库", settings: "系统设置" };

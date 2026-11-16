@@ -97,6 +97,26 @@
     async restartService() {
       await delay(700);
       return { ok: true, data: { ...window.MockDB.diagnostics.service, heartbeat: "刚刚" } };
+    },
+
+    // 未来替换为真实本机 API：POST /api/quality-gate → 执行 verify.sh 并返回结构化结果。
+    async runQualityGate() {
+      await delay(850);
+      return {
+        ok: true,
+        data: {
+          command: "bash verify.sh --scripts",
+          exitCode: 0,
+          duration: "0.8s",
+          checks: [
+            { label: "无 skip / xfail / only", status: "pass", detail: "扫描 scripts 与 tests，共 0 处" },
+            { label: "无 || true 掩码", status: "pass", detail: "未用掩码隐藏脚本失败" },
+            { label: "无硬编码 exit 0", status: "pass", detail: "汇总退出码来自真实检查结果" },
+            { label: "失败循环未超限", status: "pass", detail: "活动任务计数均小于 5；历史停机任务不计入" },
+            { label: "完成证据可追溯", status: "pass", detail: "完成任务均附正文文件计数与本地路径" }
+          ]
+        }
+      };
     }
   };
 })();

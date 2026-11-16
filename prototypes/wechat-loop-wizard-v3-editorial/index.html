@@ -102,20 +102,19 @@
               <div><h2 id="collectorTitle">选择采集方式</h2><p>每次创建一个任务，采集完成后自动入库。</p></div>
             </div>
 
-            <details class="source-grade">
+            <details class="source-grade" open>
               <summary>
-                <span class="grade-label">数据来源分级</span>
-                <span class="grade-pill l1">L1 微信读书</span>
-                <span class="grade-pill l2">L2 手动链接</span>
-                <span class="grade-pill l3">L3 RSS / OPML</span>
-                <span class="grade-pill l4">L4 不提供</span>
+                <span class="grade-label">通道分级与降级路径</span>
+                <span class="grade-pill l1">当前 L1</span>
+                <span class="grade-pill l4">L4 转人工</span>
                 <svg class="grade-caret"><use href="#i-chevron"/></svg>
               </summary>
               <div class="source-grade-body">
-                <p><strong>L1 微信读书自动通道</strong> · 需扫码授权，按公众号批量发现文章。</p>
-                <p><strong>L2 手动文章链接</strong> · 公开文章页，可不登录，直接导入正文。</p>
-                <p><strong>L3 RSS / Atom / OPML</strong> · 订阅源导入，可不登录。</p>
-                <p><strong>L4 需绕过风控的能力不提供</strong> · 扫码、滑块等验证需人工完成。</p>
+                <div class="grade-row current"><span class="grade-pill l1">L1</span><div><strong>微信读书 / 官方接口 <span class="grade-current">当前通道</span></strong><small>授权或接口失效时降到 L2，不在原通道反复重试。</small></div></div>
+                <div class="grade-row"><span class="grade-pill l1">L1.5</span><div><strong>官方接口 + 人工确认</strong><small>用于发布前确认等必须保留人工决策的环节。</small></div></div>
+                <div class="grade-row"><span class="grade-pill l2">L2</span><div><strong>文章链接 / RSS / OPML <span class="grade-current">可用兜底</span></strong><small>由你提供链接或订阅源，读取公开内容并按链接去重。</small></div></div>
+                <div class="grade-row"><span class="grade-pill l3">L3</span><div><strong>公开文章页只读采集</strong><small>只读取无需突破访问限制的公开页面，不自动发现更多文章。</small></div></div>
+                <div class="grade-row grade-blocked"><span class="grade-pill l4">L4</span><div><strong>验证码、滑块、绕过风控：停机转人工</strong><small>不自动绕过，不伪装成普通接口成功。</small></div></div>
               </div>
             </details>
 
@@ -193,7 +192,8 @@
                 <div><dt>预计</dt><dd id="summaryCount">20 篇文章</dd></div>
                 <div><dt>后续</dt><dd id="summaryAfter">下载 → 入库 → 本地拆解</dd></div>
               </dl>
-              <div class="rate-note"><svg><use href="#i-clock"/></svg><p><strong>平稳模式</strong><br>单任务串行执行，请求自动间隔，遇风控会暂停。</p></div>
+              <div class="rate-note"><svg><use href="#i-clock"/></svg><p><strong>失败循环保护</strong><br>第 3 次失败必须换假设；第 5 次自动停机，禁止原路径重试。</p></div>
+              <button class="btn btn-secondary btn-block downgrade-btn" id="downgradeBtn"><svg><use href="#i-link"/></svg>L1 不可用时，改用 L2 链接导入</button>
             </section>
           </aside>
         </div>
@@ -243,6 +243,24 @@
           <div class="settings-grid" id="settingsGrid">
             <p class="diag-loading">正在读取本机诊断信息…</p>
           </div>
+          <section class="card governance-card">
+            <div class="governance-rules">
+              <p class="eyebrow">DELIVERY PROTOCOL</p>
+              <h2>交付保护</h2>
+              <p>这五条规则贯穿采集与入库，不用“任务完成”代替真实结果。</p>
+              <ol class="protocol-list">
+                <li><span>01</span><div><strong>失败循环上限</strong><small>3 次换假设，5 次停机；停机后只能换通道或人工决策。</small></div></li>
+                <li><span>02</span><div><strong>通道降级</strong><small>L1 → L1.5 → L2 → L3；L4 不实现自动绕过。</small></div></li>
+                <li><span>03</span><div><strong>人工接管</strong><small>扫码、滑块、真实发布、凭证填写和批量删除都交给人。</small></div></li>
+                <li><span>04</span><div><strong>证据完成</strong><small>完成结论必须包含命令、退出码、非空正文数量与本地路径。</small></div></li>
+                <li><span>05</span><div><strong>防作弊</strong><small>不跳过检查，不用 || true 掩盖失败，不硬编码成功。</small></div></li>
+              </ol>
+            </div>
+            <div class="quality-gate">
+              <div class="quality-head"><div><h3>本机自检</h3><p>原型返回模拟结果，不执行本机命令。</p></div><button class="btn btn-primary btn-sm" id="runGateBtn"><svg><use href="#i-play"/></svg>运行自检</button></div>
+              <div class="gate-results" id="gateResults"><div class="gate-empty">尚未运行。正式版会读取 verify.sh 的真实退出码。</div></div>
+            </div>
+          </section>
         </div>
 
         <footer class="page-footer"><span>wechat-loop · 本地内容基础设施</span><span>原型数据仅用于演示，不会发起真实网络请求</span></footer>
@@ -289,6 +307,24 @@
         <article><span>4</span><div><h3>自动通道受限时用链接或订阅</h3><p>已有文章链接、RSS/Atom 或 OPML 时，切到“链接 / 订阅”即可批量入库。</p></div></article>
       </div>
       <button class="btn btn-primary btn-block" data-close="guideModal">知道了，开始采集</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="handoffModal" role="dialog" aria-modal="true" aria-labelledby="handoffTitle">
+    <div class="modal handoff-modal">
+      <button class="icon-btn modal-close" data-close="handoffModal" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+      <p class="eyebrow">L4 / HUMAN HANDOFF</p>
+      <h2 id="handoffTitle">这里需要你来完成</h2>
+      <p class="modal-intro" id="handoffTask">检测到人机验证，自动任务已暂停。</p>
+      <div class="handoff-stop"><svg><use href="#i-shield"/></svg><p><strong>不会自动绕过验证</strong><br>原型不会打开浏览器，也不会模拟滑块或验证码通过。</p></div>
+      <ol class="handoff-steps">
+        <li><span>1</span><div>在本机打开 127.0.0.1:5200</div></li>
+        <li><span>2</span><div>由你完成扫码、滑块或验证码</div></li>
+        <li><span>3</span><div>返回这里，重新检查任务状态</div></li>
+      </ol>
+      <div class="handoff-checklist"><strong>以下操作同样只提供步骤，不代为执行</strong><p>真实发布与群发 · 删除文章 · 填写凭证 · 修改上游仓库 · 批量删除知识库</p></div>
+      <button class="btn btn-primary btn-block" id="confirmHandoff"><svg><use href="#i-refresh"/></svg>我已完成，重新检查（模拟）</button>
+      <button class="btn btn-ghost btn-block" data-close="handoffModal">暂不处理，保持暂停</button>
     </div>
   </div>
 
