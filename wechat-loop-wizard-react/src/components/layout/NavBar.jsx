@@ -13,6 +13,9 @@ const PAGE_TITLES = {
   settings: "设置与诊断",
 }
 
+// 「开始采集」按钮只在这两个页面出现
+const ACTION_BUTTON_PAGES = new Set(["collect", "tasks"])
+
 /**
  * 顶部导航栏 —— 接收 App Shell 传入的 current / onNavigate
  * 移动端展示横向 tab + Hamburger 菜单
@@ -66,14 +69,16 @@ export function NavBar({ current, onNavigate, navItems, className }) {
               aria-label="搜索文章"
             />
           </div>
-          <Button
-            type="button"
-            size="default"
-            onClick={() => onNavigate("collect")}
-            className="h-9 shrink-0 gap-2 active:scale-95 transition-transform"
-          >
-            开始采集
-          </Button>
+          {ACTION_BUTTON_PAGES.has(current) && (
+            <Button
+              type="button"
+              size="default"
+              onClick={() => onNavigate("collect")}
+              className="h-9 shrink-0 gap-2 active:scale-95 transition-transform"
+            >
+              开始采集
+            </Button>
+          )}
         </div>
       </div>
 

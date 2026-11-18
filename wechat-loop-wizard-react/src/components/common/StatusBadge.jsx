@@ -29,21 +29,12 @@ export function StatusBadge({ status, label, className }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 text-[11px] font-medium tracking-wide",
+        "inline-flex items-center rounded-full px-1.5 py-0 text-[10px] font-medium tracking-wide leading-4",
         current.cls,
         className
       )}
       aria-label={`状态：${current.text}`}
     >
-      <span
-        className={cn(
-          "inline-block h-1.5 w-1.5 rounded-full",
-          status === "collecting" && "animate-pulse bg-[#B8862F]",
-          status === "completed" && "bg-[#4F7A5A]",
-          status === "error" && "bg-[#A94438]",
-          status === "idle" && "bg-muted-foreground"
-        )}
-      />
       {label || current.text}
     </span>
   )

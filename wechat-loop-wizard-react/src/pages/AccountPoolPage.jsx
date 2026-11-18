@@ -1,6 +1,6 @@
 import * as React from "react"
 import PropTypes from "prop-types"
-import { Users, RefreshCw, Loader2, QrCode, AlertTriangle, ShieldCheck } from "lucide-react"
+import { Users, RefreshCw, Loader2, QrCode, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -190,10 +190,10 @@ export function AccountPoolPage() {
 
       {/* 登录状态卡 */}
       <Card className="rounded-lg shadow-card">
-        <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2 pt-4">
           <div>
             <CardTitle className="font-serif text-lg font-semibold">登录状态</CardTitle>
-            <CardDescription className="mt-1 text-xs leading-6">
+            <CardDescription className="mt-0.5 text-xs leading-6">
               扫码登录微信读书，成功后自动写入账号池，采集时会自动轮换可用账号。
             </CardDescription>
           </div>
@@ -201,14 +201,14 @@ export function AccountPoolPage() {
             {auth.loggedIn ? "已登录" : "未登录"}
           </Badge>
         </CardHeader>
-        <CardContent className="pt-2">
+        <CardContent className="pb-4 pt-0">
           {auth.loading ? (
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <Skeleton className="h-36 w-36 rounded-sm" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-40" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Skeleton className="h-28 w-28 rounded-sm" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-40" />
                 <Skeleton className="h-3 w-64" />
-                <Skeleton className="h-8 w-28 rounded-sm" />
+                <Skeleton className="h-7 w-28 rounded-sm" />
               </div>
             </div>
           ) : auth.error ? (
@@ -224,84 +224,76 @@ export function AccountPoolPage() {
               </AlertDescription>
             </Alert>
           ) : (
-            <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start sm:gap-8">
-              {auth.loggedIn ? (
-                <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-sm border border-[#4F7A5A]/30 bg-[#4F7A5A]/[0.06]">
-                  <ShieldCheck className="h-8 w-8 text-[#4F7A5A]" aria-hidden="true" />
+            auth.loggedIn ? (
+              /* 已登录态 —— 紧凑一行信息 */
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-4">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4F7A5A]" aria-hidden="true" />
+                  <span className="font-medium">登录有效</span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="font-mono text-[11px] text-muted-foreground tabular-nums truncate">
+                    {auth.tokenPreview || "暂无 token"}
+                  </span>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    凭证保存 {formatTime(auth.saveTime)}
+                  </span>
                 </div>
-              ) : qr.loading ? (
-                <div className="flex h-40 w-40 shrink-0 items-center justify-center rounded-sm border border-dashed border-border bg-surface/50">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
-                </div>
-              ) : qr.url ? (
-                <img
-                  src={qr.url}
-                  alt="微信扫码登录二维码"
-                  className="h-40 w-40 shrink-0 rounded-sm border border-border bg-card object-contain"
-                />
-              ) : (
-                <div className="flex h-40 w-40 shrink-0 items-center justify-center rounded-sm border border-dashed border-border bg-surface/50 p-4 text-center">
-                  <span className="text-xs leading-6 text-muted-foreground">生成二维码后显示在此处</span>
-                </div>
-              )}
-
-              <div className="flex flex-1 flex-col gap-3">
-                {auth.loggedIn ? (
-                  <>
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="h-2 w-2 rounded-full bg-[#4F7A5A]" aria-hidden="true" />
-                      <span className="font-medium">登录有效</span>
-                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                        {auth.tokenPreview || "暂无 token 预览"}
-                      </span>
-                    </div>
-                    <p className="text-[11px] leading-6 text-muted-foreground">
-                      凭证保存于 {formatTime(auth.saveTime)}。如需更换账号，可重新生成二维码扫码登录。
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm leading-7">
-                      {auth.loginState?.message || auth.message || "未登录。点击「生成二维码」，用微信扫码授权。"}
-                    </p>
-                    {waitingScan && (
-                      <p className="text-[11px] leading-6 text-[#8a6520]">
-                        已出码，正在等待扫码确认（每 2 秒自动检查）。二维码约 2 分钟内有效。
-                      </p>
-                    )}
-                    {auth.tokenPreview && (
-                      <p className="font-mono text-[11px] text-muted-foreground tabular-nums">
-                        最近 token：{auth.tokenPreview}
-                      </p>
-                    )}
-                  </>
-                )}
-
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <Button
-                    variant={auth.loggedIn ? "outline" : "default"}
+                    variant="outline"
                     size="sm"
                     onClick={handleGenerateQr}
                     disabled={qr.loading || waitingScan}
-                    className="gap-2 active:scale-95"
+                    className="h-7 gap-1.5 text-[12px] active:scale-95"
                   >
                     {qr.loading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                     ) : (
-                      <QrCode className="h-3.5 w-3.5" aria-hidden="true" />
+                      <QrCode className="h-3 w-3" aria-hidden="true" />
                     )}
-                    {qr.loading ? "正在生成…" : waitingScan ? "等待扫码…" : auth.loggedIn ? "重新生成二维码" : "生成二维码"}
+                    {qr.loading ? "生成中…" : waitingScan ? "等待扫码…" : "换号登录"}
                   </Button>
-                  {!auth.loggedIn && !waitingScan && qr.url && (
-                    <span className="text-[11px] text-muted-foreground">二维码已生成，请用微信扫码</span>
+                </div>
+              </div>
+            ) : (
+              /* 未登录态 —— 二维码居中 + 按钮在下 */
+              <div className="flex flex-col items-center gap-3 py-1">
+                <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-sm border border-border bg-card overflow-hidden">
+                  {qr.loading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
+                  ) : qr.url ? (
+                    <img src={qr.url} alt="微信扫码登录二维码" className="h-full w-full object-contain" />
+                  ) : (
+                    <span className="text-[11px] leading-5 text-muted-foreground px-3 text-center">点击下方按钮生成二维码</span>
                   )}
                 </div>
 
                 {qr.error && (
                   <p className="text-[11px] leading-6 text-[#A94438]">{qr.error}</p>
                 )}
+
+                <p className="text-[12px] leading-6 text-muted-foreground text-center">
+                  {auth.loginState?.message || auth.message || "未登录。用微信扫码授权后自动写入账号池。"}
+                  {waitingScan && <span className="text-[#8a6520]">（正在等待扫码确认）</span>}
+                </p>
+
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleGenerateQr}
+                  disabled={qr.loading || waitingScan}
+                  className="h-8 gap-1.5 text-[12px] active:scale-95"
+                >
+                  {qr.loading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <QrCode className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  {qr.loading ? "正在生成…" : waitingScan ? "等待扫码…" : "生成二维码"}
+                </Button>
               </div>
-            </div>
+            )
           )}
         </CardContent>
       </Card>
@@ -400,9 +392,9 @@ export function AccountPoolPage() {
                 <li key={acc.id || acc.vid} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     {acc.avatar ? (
-                      <img src={acc.avatar} alt="" className="h-9 w-9 shrink-0 rounded-sm border border-border object-cover" />
+                      <img src={acc.avatar} alt="" className="h-10 w-10 shrink-0 rounded-full border border-border object-cover" />
                     ) : (
-                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-secondary font-serif text-sm font-semibold text-muted-foreground">
+                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#12372e] font-serif text-sm font-bold text-white">
                         {acc.nickname.slice(0, 1)}
                       </span>
                     )}
@@ -484,8 +476,8 @@ function SummaryBlock({ label, value, tone }) {
       : "text-foreground"
   return (
     <div className="rounded-md border border-border bg-card px-4 py-3">
-      <div className={`font-serif text-2xl font-semibold tabular-nums ${valueClass}`}>{value}</div>
-      <div className="mt-1 text-[11px] tracking-wide text-muted-foreground">{label}</div>
+      <div className={`font-serif text-3xl font-bold tabular-nums leading-none ${valueClass}`}>{value}</div>
+      <div className="mt-1.5 text-[11px] tracking-wide text-muted-foreground">{label}</div>
     </div>
   )
 }
