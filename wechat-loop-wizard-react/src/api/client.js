@@ -806,6 +806,347 @@ export const api = {
     }
   },
 
+  // ── 原版 articles.js 对应 ──────────────────────────────
+
+  /**
+   * 一键采集所有已关注公众号最新文章
+   * POST /api/articles/collect-all
+   * 返回 { taskId, message }
+   * @param {{limit?: number, skipExisting?: boolean}} [options]
+   */
+  async collectAllLatest({ limit = 50, skipExisting = true } = {}) {
+    if (USE_MOCK) {
+      await delay(400)
+      return { taskId: `collect_all_${Date.now()}`, message: `已启动全量采集，每号约 ${limit} 篇` }
+    }
+    try {
+      const res = await fetchJSON("/api/articles/collect-all", {
+        method: "POST",
+        body: JSON.stringify({ limit, skip_existing: skipExisting }),
+      })
+      return { taskId: res?.task_id || "", message: res?.message || "已启动全量采集" }
+    } catch (err) {
+      throw toError(err, "启动全量采集失败")
+    }
+  },
+
+  /**
+   * 启动批量下载任务
+   * POST /api/articles/download  body: { articles: [...], account_name }
+   * 返回 { taskId, message }
+   * @param {{ articles: Array<{link:string,title?:string,digest?:string,update_time?:number}>, account_name: string }} payload
+   */
+  async startDownload({ articles, account_name = "" }) {
+    const list = (Array.isArray(articles) ? articles : []).filter((a) => a && a.link)
+    if (!list.length) throw new Error("请至少选择一篇有链接的文章")
+    if (USE_MOCK) {
+      await delay(300)
+      return { taskId: `dl_${Date.now()}`, message: `已启动下载，共 ${list.length} 篇` }
+    }
+    try {
+      const res = await fetchJSON("/api/articles/download", {
+        method: "POST",
+        body: JSON.stringify({ articles: list, account_name }),
+      })
+      if (!res?.task_id) throw new Error("服务未返回 task_id")
+      return { taskId: res.task_id, message: res.message || `已启动下载 ${list.length} 篇` }
+    } catch (err) {
+      throw toError(err, "启动下载失败")
+    }
+  },
+
+  /**
+   * 按链接批量下载（不依赖公众号）
+   * POST /api/articles/download-url  body: { urls: [...] }
+   */
+  async startDownloadByUrl(urls) {
+    const list = (Array.isArray(urls) ? urls : [])
+      .map((u) => String(u || "").trim())
+      .filter(Boolean)
+    if (!list.length) throw new Error("请输入有效的文章链接")
+    if (USE_MOCK) {
+      await delay(300)
+      return { taskId: `url_dl_${Date.now()}`, message: `已启动链接下载 ${list.length} 篇` }
+    }
+    try {
+      const res = await fetchJSON("/api/articles/download-url", {
+        method: "POST",
+        body: JSON.stringify({ urls: list }),
+      })
+      return { taskId: res?.task_id || "", message: res?.message || "" }
+    } catch (err) {
+      throw toError(err, "按链接下载失败")
+    }
+  },
+
+  /**
+   * 轮询下载任务状态
+   * GET /api/articles/download-status/<taskId>
+   * 返回原始 task 对象
+   */
+  async fetchDownloadStatus(taskId) {
+    if (!taskId) throw new Error("缺少 taskId")
+    if (USE_MOCK) return null
+    try {
+      return await fetchJSON(`/api/articles/download-status/${encodeURIComponent(taskId)}`)
+    } catch (err) {
+      if (err?.message?.includes("404")) return null
+      throw err
+    }
+  },
+
+  /**
+   * 取消下载任务
+   * POST /api/articles/download-cancel/<taskId>
+   */
+  async cancelDownloadTask(taskId) {
+    if (!taskId) throw new Error("缺少 taskId")
+    if (USE_MOCK) return { ok: true }
+    try {
+      return await fetchJSON(`/api/articles/download-cancel/${encodeURIComponent(taskId)}`, {
+        method: "POST",
+      })
+    } catch (err) {
+      throw toError(err, "停止下载失败")
+    }
+  },
+
+  /**
+   * 清空下载历史（POST，原版 history.js 用 POST /api/articles/clear-history）
+   * 现有 deleteHistory() 已经 DELETE /api/articles/history，直接用它清空即可
+   */
+  async clearHistoryPosts() {
+    if (USE_MOCK) { await delay(300); return { ok: true, message: "历史已清空" } }
+    try {
+      return await fetchJSON("/api/articles/clear-history", { method: "POST" })
+    } catch (err) {
+      // 兼容后端只实现了 DELETE /api/articles/history
+      if (err?.message?.includes("404")) {
+        return fetchJSON("/api/articles/history", { method: "DELETE" })
+      }
+      throw toError(err, "清空历史失败")
+    }
+  },
+
+  /**
+   * 获取系统设置（rss_token 等）
+   * GET /api/settings
+   */
+  async fetchSettings() {
+    if (USE_MOCK) return { rss_token: "", rss_base_url: "" }
+    try {
+      const res = await fetchJSON("/api/settings")
+      return {
+        rssToken: res?.rss_token || "",
+        rssBaseUrl: (res?.rss_base_url || "").replace(/\/+$/, ""),
+        ...res,
+      }
+    } catch (err) {
+      console.warn("[api] fetchSettings 失败:", err.message)
+      return { rssToken: "", rssBaseUrl: "" }
+    }
+  },
+
+  /**
+   * 原版风格的文章列表（完整字段，不做 normalize）
+   * GET /api/articles/list/<fakeid>?begin=&count=20
+   * 返回原始 { articles, total, can_msg_continue, ... }
+   */
+  async fetchArticlesListRaw(fakeid, { begin = 0, count = 20 } = {}) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) {
+      await delay(300)
+      return { articles: [], total: 0, can_msg_continue: 0 }
+    }
+    try {
+      const qs = new URLSearchParams({ begin: String(begin), count: String(count) }).toString()
+      return await fetchJSON(`/api/articles/list/${encodeURIComponent(fakeid)}?${qs}`)
+    } catch (err) {
+      throw toError(err, "读取文章列表失败")
+    }
+  },
+
+  // ── 网址下载 & 内容过滤 ──────────────────────────────────
+
+  /**
+   * 按链接批量下载（单复数别名，与原版 download.js 对齐）
+   * POST /api/articles/download-url  body: { urls: [...] }
+   * 返回 { task_id, message }
+   * @param {string[]} urls
+   */
+  async downloadByUrl(urls) {
+    return this.downloadByUrls(urls)
+  },
+
+  /**
+   * 查询下载任务状态
+   * GET /api/articles/download-status/<taskId>
+   * 返回 { status, current, total, completed, failed, ... }
+   * @param {string} taskId
+   */
+  async downloadStatus(taskId) {
+    if (!taskId) throw new Error("缺少 taskId")
+    if (USE_MOCK) {
+      await delay(200)
+      return { status: "running", current: "模拟下载中", total: 3, completed: 1, failed: 0 }
+    }
+    try {
+      return await fetchJSON(`/api/articles/download-status/${encodeURIComponent(taskId)}`)
+    } catch (err) {
+      throw toError(err, "查询下载状态失败")
+    }
+  },
+
+  /**
+   * 停止下载任务
+   * POST /api/articles/download-cancel  body: { task_id }
+   * @param {string} taskId
+   */
+  async cancelDownload(taskId) {
+    if (!taskId) throw new Error("缺少 taskId")
+    if (USE_MOCK) { await delay(100); return { ok: true, message: "已请求停止" } }
+    try {
+      return await fetchJSON("/api/articles/download-cancel", {
+        method: "POST",
+        body: JSON.stringify({ task_id: taskId }),
+      })
+    } catch (err) {
+      throw toError(err, "停止下载失败")
+    }
+  },
+
+  /**
+   * 读取内容过滤设置
+   * GET /api/articles/content-filter
+   * 返回 { rules: { enabled, banner_images, remove_image_keywords, remove_text_keywords } }
+   */
+  async contentFilter() {
+    if (USE_MOCK) {
+      await delay(150)
+      return {
+        rules: {
+          enabled: true,
+          banner_images: { enabled: true, max_ratio: 0.22, min_width: 500 },
+          remove_image_keywords: ["分割线", "二维码", "扫码"],
+          remove_text_keywords: ["点击上方蓝字", "扫码关注"],
+        },
+      }
+    }
+    try {
+      return await fetchJSON("/api/articles/content-filter")
+    } catch (err) {
+      throw toError(err, "读取过滤设置失败")
+    }
+  },
+
+  /**
+   * 保存内容过滤设置
+   * POST /api/articles/content-filter  body: { rules }
+   * @param {object} rules
+   */
+  async saveContentFilter(rules) {
+    if (USE_MOCK) { await delay(200); return { ok: true } }
+    try {
+      return await fetchJSON("/api/articles/content-filter", {
+        method: "POST",
+        body: JSON.stringify({ rules }),
+      })
+    } catch (err) {
+      throw toError(err, "保存过滤设置失败")
+    }
+  },
+
+  /**
+   * 将过滤规则应用到已下载的文章
+   * POST /api/articles/content-filter/apply-existing  body: { dry_run? }
+   * 返回 { scanned, changed }
+   * @param {{dry_run?: boolean}} [options]
+   */
+  async applyContentFilter(options = {}) {
+    if (USE_MOCK) {
+      await delay(400)
+      const scanned = 56
+      const changed = 12
+      return { scanned, changed, message: options.dry_run
+        ? `预览：扫描 ${scanned} 篇，预计改写 ${changed} 篇`
+        : `已改写 ${changed} 篇` }
+    }
+    try {
+      return await fetchJSON("/api/articles/content-filter/apply-existing", {
+        method: "POST",
+        body: JSON.stringify({ dry_run: options.dry_run !== false }),
+      })
+    } catch (err) {
+      throw toError(err, "应用过滤失败")
+    }
+  },
+
+  /**
+   * 打开下载目录（label 版 —— 与原版 download.js 对齐）
+   * POST /api/articles/open-folder  body: { label }
+   * @param {string} [label="url_download"]
+   */
+  async openFolderByLabel(label = "url_download") {
+    if (USE_MOCK) { await delay(100); return { ok: true } }
+    try {
+      return await fetchJSON("/api/articles/open-folder", {
+        method: "POST",
+        body: JSON.stringify({ label }),
+      })
+    } catch (err) {
+      throw toError(err, "打开目录失败")
+    }
+  },
+
+  /**
+   * 验证单个账号凭证活性
+   * POST /api/account-pool/<id>/verify
+   * 返回 { valid, message }
+   * @param {string} id
+   */
+  async verifyAccount(id) {
+    if (!id) throw new Error("缺少账号 id")
+    if (USE_MOCK) { await delay(400); return { valid: true, message: "凭证活性正常" } }
+    try {
+      return await fetchJSON(`/api/account-pool/${encodeURIComponent(id)}/verify`, { method: "POST" })
+    } catch (err) {
+      throw toError(err, "验证账号失败")
+    }
+  },
+
+  /**
+   * 从账号池删除账号
+   * DELETE /api/account-pool/<id>
+   * @param {string} id
+   */
+  async removeAccount(id) {
+    if (!id) throw new Error("缺少账号 id")
+    if (USE_MOCK) { await delay(200); return { ok: true } }
+    try {
+      const res = await fetch(`/api/account-pool/${encodeURIComponent(id)}`, { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.text().catch(() => "")
+        throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      }
+      return await res.json()
+    } catch (err) {
+      throw toError(err, "删除账号失败")
+    }
+  },
+
+  /**
+   * 取消扫码登录（后端停止轮询 + 清理状态）
+   * POST /api/auth/cancel
+   */
+  async cancelAuth() {
+    if (USE_MOCK) return { ok: true }
+    try {
+      return await fetchJSON("/api/auth/cancel", { method: "POST" })
+    } catch (err) {
+      throw toError(err, "取消登录失败")
+    }
+  },
+
   /**
    * 批量下载文章（从文章浏览 Tab 调用）
    * POST /api/articles/download  body: { articles: [{link,title,digest,...}], account_name }

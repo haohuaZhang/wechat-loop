@@ -8,14 +8,17 @@ import { Input } from "@/components/ui/input"
 const PAGE_TITLES = {
   pool: "账号池",
   accounts: "公众号管理",
+  articles: "公众号文章",
   collect: "采集向导",
+  download: "网址下载",
+  history: "下载历史",
   tasks: "采集任务",
   library: "入库文章",
   settings: "设置与诊断",
 }
 
-// 「开始采集」按钮只在这两个页面出现
-const ACTION_BUTTON_PAGES = new Set(["collect", "tasks"])
+// 「开始采集」按钮只在需要的页面出现
+const ACTION_BUTTON_PAGES = new Set(["articles"])
 
 /**
  * 顶部导航栏 —— 接收 App Shell 传入的 current / onNavigate

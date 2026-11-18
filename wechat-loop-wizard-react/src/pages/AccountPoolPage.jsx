@@ -1,489 +1,572 @@
 import * as React from "react"
 import PropTypes from "prop-types"
-import { Users, RefreshCw, Loader2, QrCode, AlertTriangle } from "lucide-react"
+import { Users, RefreshCw, Loader2, AlertTriangle, Plus, X, QrCode, RotateCcw, Search, Trash2, Smartphone } from "lucide-react"
+import { createPortal } from "react-dom"
+import { api } from "@/api/client"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
-import { EmptyState } from "@/components/common/EmptyState"
-import { StatusBadge } from "@/components/common/StatusBadge"
-import { api } from "@/api/client"
 
-const STATUS_MAP = {
-  active: { badge: "completed", label: "可用" },
-  cooldown: { badge: "collecting", label: "冷却中" },
-  invalid: { badge: "error", label: "失效" },
+// ── 状态映射（严格对齐原版 login.js） ──────────────────────────
+const STATUS_LABEL = {
+  active: "正常运行",
+  cooldown: "冷却中",
+  banned: "已失效 · 风控",
+  invalid: "已失效 · 登录过期",
+}
+const STATUS_COLOR = {
+  active: "#12372e",    // 深绿
+  cooldown: "#C87137",  // 赭石橙
+  banned: "#7d2f26",    // 红
+  invalid: "#7d2f26",
 }
 
-function statusMeta(status) {
-  return STATUS_MAP[status] || { badge: "idle", label: status || "未知" }
-}
-
-function formatTime(ts) {
-  if (!ts) return "—"
+function statusLabel(s) { return STATUS_LABEL[s] || s || "未知" }
+function statusColor(s) { return STATUS_COLOR[s] || "#6B6B6B" }
+function formatDate(ts) {
+  if (!ts) return "未记录"
   return new Date(ts * 1000).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
   })
 }
 
-/**
- * 账号池页 —— 扫码登录 + 多账号轮换状态
- */
-export function AccountPoolPage() {
-  const [auth, setAuth] = React.useState({
-    loading: true,
-    error: "",
-    loggedIn: false,
-    tokenPreview: "",
-    saveTime: 0,
-    message: "",
-    loginState: { status: "idle", message: "" },
-  })
-  const [qr, setQr] = React.useState({ url: "", loading: false, error: "", polling: false })
-  const [pool, setPool] = React.useState({ loading: true, error: "", accounts: [], total: 0, summary: null })
-  const [action, setAction] = React.useState({ busy: "", error: "", success: "" })
-  const [now, setNow] = React.useState(() => Math.floor(Date.now() / 1000))
+// ── 统计概要小胶囊 ──────────────────────────────────────────────
+function SummaryPill({ icon, label, value, tone }) {
+  const toneClass = {
+    green: "bg-[#12372e]/10 text-[#12372e]",
+    amber: "bg-[#C87137]/12 text-[#C87137]",
+    red: "bg-[#7d2f26]/10 text-[#7d2f26]",
+    gray: "bg-[#1A1A1A]/5 text-[#6B6B6B]",
+  }[tone] || "bg-[#1A1A1A]/5 text-[#6B6B6B]"
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium ${toneClass}`}>
+      {icon} {label} {value}
+    </span>
+  )
+}
+SummaryPill.propTypes = { icon: PropTypes.node, label: PropTypes.string, value: PropTypes.number, tone: PropTypes.string }
 
-  const loadAuth = React.useCallback(async () => {
-    setAuth((s) => ({ ...s, loading: true, error: "" }))
-    try {
-      const res = await api.authStatus()
-      setAuth({
-        loading: false,
-        error: "",
-        loggedIn: res.loggedIn,
-        tokenPreview: res.tokenPreview,
-        saveTime: res.saveTime,
-        message: res.message,
-        loginState: res.loginState,
-      })
-    } catch (err) {
-      setAuth((s) => ({ ...s, loading: false, error: err?.message || "读取登录状态失败" }))
-    }
-  }, [])
+// ── 单账号卡片 ──────────────────────────────────────────────────
+function AccountCard({ acc, busy, onRefresh, onVerify, onRescan, onRemove }) {
+  const isKicked = acc.status === "banned" || acc.status === "invalid"
+  const color = statusColor(acc.status)
+  const refreshing = busy === `refresh:${acc.id}`
+  const verifying = busy === `verify:${acc.id}`
 
-  const loadPool = React.useCallback(async () => {
-    setPool((s) => ({ ...s, loading: true, error: "" }))
-    try {
-      const [list, summary] = await Promise.all([api.listPool(), api.poolSummary()])
-      setPool({ loading: false, error: "", accounts: list.accounts, total: list.total, summary })
-    } catch (err) {
-      setPool((s) => ({ ...s, loading: false, error: err?.message || "读取账号池失败" }))
-    }
-  }, [])
+  return (
+    <div
+      className="group relative rounded-md border border-[#1A1A1A]/10 bg-white p-5 transition-shadow hover:shadow-md"
+      style={{ borderColor: isKicked ? "rgba(125, 47, 38, 0.3)" : undefined }}
+    >
+      {/* 状态徽标 */}
+      <div className="absolute right-4 top-4 flex items-center gap-1.5">
+        <span
+          className="inline-block h-2 w-2 rounded-full"
+          style={{
+            backgroundColor: color,
+            boxShadow: acc.status === "active" ? `0 0 6px ${color}` : undefined,
+          }}
+        />
+        <span className="text-[12px] font-semibold" style={{ color }}>
+          {statusLabel(acc.status)}
+        </span>
+      </div>
 
-  React.useEffect(() => {
-    loadAuth()
-    loadPool()
-  }, [loadAuth, loadPool])
+      {/* 头像 + 昵称 */}
+      <div className="mb-4 flex items-center gap-3">
+        {acc.avatar ? (
+          <img src={acc.avatar} alt="" className="h-11 w-11 rounded-full border-2 border-white object-cover shadow-sm"
+            onError={(e) => { e.currentTarget.style.display = "none" }} />
+        ) : null}
+        <div
+          className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#12372e] font-serif text-lg font-bold text-white"
+          style={{ display: acc.avatar ? "none" : undefined }}
+        >
+          {(acc.nickname || "?").charAt(0)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-serif text-base font-bold tracking-tight text-[#1A1A1A]">
+            {acc.nickname || "微信读书用户"}
+          </div>
+          <div className="mt-0.5 font-mono text-[11px] text-[#6B6B6B]">
+            VID: {acc.vid || acc.id}
+          </div>
+        </div>
+      </div>
 
-  // 冷却倒计时每秒刷新
-  React.useEffect(() => {
-    const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000)
-    return () => clearInterval(timer)
-  }, [])
+      {/* 统计行 */}
+      <div className="mb-3 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-md bg-[#F5F3EF] px-3 py-2.5 text-[12px] text-[#1A1A1A]/80">
+        <div>
+          绑定设备: <strong className="text-[#12372e]">{acc.deviceName || "未知设备"}</strong>
+        </div>
+        <div>
+          换票算法: <strong>S-Box 纯算</strong>
+        </div>
+        <div>
+          成功换票: <strong>{acc.success_refreshes || acc.successRefreshes || 0}</strong> 次
+        </div>
+        <div>
+          连续失败: <strong>{acc.failures || 0}</strong> 次
+        </div>
+        {acc.saveTime || acc.save_time ? (
+          <div className="col-span-2 text-[11px] text-[#6B6B6B]">
+            更新时间: {formatDate(acc.saveTime || acc.save_time)}
+          </div>
+        ) : null}
+      </div>
 
-  // 出码后每 2 秒轮询登录状态，登录成功后停止并刷新账号列表
-  React.useEffect(() => {
-    if (!qr.polling) return
-    let cancelled = false
+      {acc.lastError || acc.last_error ? (
+        <div className="mb-2 break-all text-[12px] text-[#7d2f26]">
+          最近异常: {acc.lastError || acc.last_error}
+        </div>
+      ) : null}
 
-    const poll = async () => {
+      {/* 操作按钮 */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline" size="sm"
+          onClick={() => onRefresh(acc.id)}
+          disabled={Boolean(busy)}
+          className="gap-1 rounded-md text-[12px] active:scale-95"
+          title="使用 RefreshToken 立即重新换取最新 AccessToken"
+        >
+          {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+          🔄 换新 Token
+        </Button>
+        <Button
+          variant="outline" size="sm"
+          onClick={() => onVerify(acc.id)}
+          disabled={Boolean(busy)}
+          className="gap-1 rounded-md text-[12px] active:scale-95"
+          title="向微信读书发起验证接口确认凭证活性"
+        >
+          {verifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+          🔍 验证
+        </Button>
+        {isKicked && (
+          <Button
+            variant="default" size="sm"
+            onClick={onRescan}
+            disabled={Boolean(busy)}
+            className="gap-1 rounded-md bg-[#C87137] hover:bg-[#C87137]/90 text-white text-[12px] active:scale-95"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            重新扫码
+          </Button>
+        )}
+        <Button
+          variant="ghost" size="sm"
+          onClick={() => onRemove(acc.id)}
+          disabled={Boolean(busy)}
+          className="ml-auto gap-1 rounded-md text-[12px] text-[#7d2f26] hover:bg-[#7d2f26]/10 active:scale-95"
+        >
+          <Trash2 className="h-3.5 w-3.5" /> 删除
+        </Button>
+      </div>
+    </div>
+  )
+}
+AccountCard.propTypes = {
+  acc: PropTypes.object.isRequired,
+  busy: PropTypes.string,
+  onRefresh: PropTypes.func.isRequired,
+  onVerify: PropTypes.func.isRequired,
+  onRescan: PropTypes.func.isRequired,
+  onRemove: PropTypes.func.isRequired,
+}
+
+// ── 全屏扫码 Modal（Portal，fixed inset-0） ─────────────────────
+function QrLoginModal({ open, onClose, onSuccess }) {
+  const [qrUrl, setQrUrl] = React.useState("")
+  const [loading, setLoading] = React.useState(false)
+  const [status, setStatus] = React.useState("loading") // loading | scanning | scanned | success | failed | expired
+  const [statusMsg, setStatusMsg] = React.useState("")
+  const [error, setError] = React.useState("")
+  const pollTimerRef = React.useRef(null)
+  const startTimeRef = React.useRef(0)
+
+  const startPolling = React.useCallback(() => {
+    pollTimerRef.current = setInterval(async () => {
       try {
-        const res = await api.authStatus()
-        if (cancelled) return
-        setAuth((s) => ({
-          ...s,
-          loading: false,
-          error: "",
-          loggedIn: res.loggedIn,
-          tokenPreview: res.tokenPreview || s.tokenPreview,
-          saveTime: res.saveTime || s.saveTime,
-          message: res.message,
-          loginState: res.loginState,
-        }))
-        if (res.loggedIn) {
-          setQr({ url: "", loading: false, error: "", polling: false })
-          loadPool()
-        } else if (res.loginState?.status === "expired" || res.loginState?.status === "failed") {
-          setQr({
-            url: "",
-            loading: false,
-            error: res.loginState?.message || "二维码已过期，请重新生成",
-            polling: false,
-          })
+        const data = await api.pollAuthStatus()
+        const state = data?.login_state || {}
+        if (state.status === "scanned") {
+          setStatus("scanned")
+          setStatusMsg("📱 已扫码，请在手机上点击【确认登录】")
+        } else if (state.status === "success" || data?.loggedIn === true) {
+          setStatus("success")
+          setStatusMsg(state.message || "登录成功！")
+          clearInterval(pollTimerRef.current); pollTimerRef.current = null
+          setTimeout(() => {
+            onSuccess?.()
+          }, 1200)
+        } else if (state.status === "failed") {
+          setStatus("failed")
+          setStatusMsg(state.message || "登录失败")
+          clearInterval(pollTimerRef.current); pollTimerRef.current = null
+        } else if (state.status === "expired") {
+          setStatus("expired")
+          setStatusMsg("二维码已过期")
+          clearInterval(pollTimerRef.current); pollTimerRef.current = null
+        } else if (state.status === "idle") {
+          const elapsed = Date.now() - startTimeRef.current
+          if (elapsed > 3500) {
+            // 长时间 idle 视为后端未启动
+          }
         }
-      } catch (err) {
-        if (!cancelled) {
-          setQr((s) => ({ ...s, error: err?.message || "登录状态查询失败" }))
+      } catch (_e) { /* silent */ }
+    }, 1500)
+  }, [onSuccess])
+
+  const launchLogin = React.useCallback(async () => {
+    setLoading(true)
+    setError("")
+    setStatus("loading")
+    setStatusMsg("正在获取微信读书官方授权二维码...")
+    setQrUrl("")
+    startTimeRef.current = Date.now()
+    try {
+      const data = await api.startLogin()
+      let raw = data?.qrcode_url || data?.login_state?.qrcode || data?.qrcode
+      if (raw) {
+        let src = String(raw)
+        if (!/^(data:|https?:\/\/)/.test(src)) {
+          src = `data:image/jpeg;base64,${src}`
         }
+        setQrUrl(src)
+      }
+      setLoading(false)
+      setStatus("scanning")
+      setStatusMsg("正在等待手机微信扫码授权...")
+      startPolling()
+    } catch (err) {
+      setLoading(false)
+      setStatus("failed")
+      setError(err?.message || "获取二维码失败")
+      setStatusMsg("获取失败")
+    }
+  }, [startPolling])
+
+  // open 时自动启动
+  React.useEffect(() => {
+    if (open) {
+      launchLogin()
+    }
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
       }
     }
+  }, [open, launchLogin])
 
-    poll()
-    const timer = setInterval(poll, 2000)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [qr.polling, loadPool])
+  // ESC 关闭
+  React.useEffect(() => {
+    if (!open) return
+    const onKey = (e) => { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, onClose])
 
-  const handleGenerateQr = async () => {
-    setQr({ url: "", loading: true, error: "", polling: false })
-    try {
-      const res = await api.startLogin()
-      const qrcodeUrl = res?.qrcode_url || res?.qrcode?.qrcodebase64 || ""
-      if (!qrcodeUrl) throw new Error("未获取到二维码")
-      const src = /^(data:|https?:\/\/)/.test(qrcodeUrl)
-        ? qrcodeUrl
-        : `https://open.weixin.qq.com/connect/qrcode/${qrcodeUrl}`
-      setQr({ url: src, loading: false, error: "", polling: true })
-      setAuth((s) => ({ ...s, loginState: res?.login_state || s.loginState, error: "" }))
-    } catch (err) {
-      setQr({ url: "", loading: false, error: err?.message || "二维码生成失败", polling: false })
-    }
+  const handleClose = React.useCallback(async () => {
+    try { await api.cancelAuth() } catch (_e) { /* silent */ }
+    if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null }
+    onClose()
+  }, [onClose])
+
+  if (!open) return null
+
+  const iconMap = {
+    loading: <Loader2 className="h-8 w-8 animate-spin text-[#12372e]" />,
+    scanning: qrUrl ? null : <Loader2 className="h-8 w-8 animate-spin text-[#12372e]" />,
+    scanned: null,
+    success: <span className="text-5xl">🎉</span>,
+    failed: <span className="text-4xl text-[#7d2f26]">❌</span>,
+    expired: <span className="text-4xl text-[#C87137]">⏳</span>,
   }
 
-  const runAction = async (key, task, successText) => {
-    setAction({ busy: key, error: "", success: "" })
-    try {
-      const res = await task()
-      setAction({ busy: "", error: "", success: successText || res?.message || "操作完成" })
-      await loadPool()
-    } catch (err) {
-      setAction({ busy: "", error: err?.message || "操作失败", success: "" })
-    }
-  }
+  const msgColor = {
+    loading: "#6B6B6B",
+    scanning: "#6B6B6B",
+    scanned: "#C87137",
+    success: "#12372e",
+    failed: "#7d2f26",
+    expired: "#C87137",
+  }[status] || "#6B6B6B"
 
-  const handleVerifyAll = () => {
-    runAction("verify-all", () => api.verifyAllAccounts(), "已校验全部账号")
-  }
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-5"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="relative w-full max-w-[380px] rounded-md border border-[#1A1A1A]/10 bg-white p-6 text-center shadow-2xl">
+        {/* 关闭按钮 */}
+        <button
+          type="button"
+          onClick={handleClose}
+          className="absolute right-3.5 top-3.5 rounded-md p-1 text-[#6B6B6B] hover:bg-[#1A1A1A]/5"
+          aria-label="关闭"
+        >
+          <X className="h-4 w-4" />
+        </button>
 
-  const handleRefresh = (id) => {
-    runAction(`refresh:${id}`, async () => {
-      const res = await api.refreshAccount(id)
-      if (!res.ok) throw new Error(res.message || "刷新失败，请重新扫码登录")
-      return res
-    })
-  }
-
-  const handleRevive = (id) => {
-    runAction(`revive:${id}`, () => api.reviveAccount(id))
-  }
-
-  const summary = pool.summary || { total: pool.total, active: 0, cooldown: 0, invalid: 0, banned: 0 }
-  const waitingScan = qr.polling && !auth.loggedIn
-
-  return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-1">
-        <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Page 00</p>
-        <h1 className="font-serif text-3xl font-semibold tracking-tight">账号池</h1>
-        <p className="text-sm leading-7 text-muted-foreground">
-          扫码登录 · 多号轮换。凭证只保存在本机，账号状态由上游服务统一调度。
+        <h3 className="mb-1 font-serif text-[17px] font-bold text-[#1A1A1A]">
+          📱 微信读书扫码登录
+        </h3>
+        <p className="mb-4 text-[12px] text-[#6B6B6B]">
+          使用手机微信「扫一扫」并确认授权
         </p>
-      </header>
 
-      {/* 登录状态卡 */}
-      <Card className="rounded-lg shadow-card">
-        <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2 pt-4">
-          <div>
-            <CardTitle className="font-serif text-lg font-semibold">登录状态</CardTitle>
-            <CardDescription className="mt-0.5 text-xs leading-6">
-              扫码登录微信读书，成功后自动写入账号池，采集时会自动轮换可用账号。
-            </CardDescription>
-          </div>
-          <Badge variant={auth.loggedIn ? "secondary" : "outline"} className="rounded-sm text-[11px]">
-            {auth.loggedIn ? "已登录" : "未登录"}
-          </Badge>
-        </CardHeader>
-        <CardContent className="pb-4 pt-0">
-          {auth.loading ? (
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Skeleton className="h-28 w-28 rounded-sm" />
-              <div className="flex-1 space-y-1.5">
-                <Skeleton className="h-3.5 w-40" />
-                <Skeleton className="h-3 w-64" />
-                <Skeleton className="h-7 w-28 rounded-sm" />
-              </div>
+        {/* 二维码区 */}
+        <div className="mx-auto flex min-h-[220px] items-center justify-center">
+          {status === "success" || status === "failed" || status === "expired" ? (
+            iconMap[status]
+          ) : qrUrl ? (
+            <div className="inline-block rounded-md border border-[#1A1A1A]/10 bg-white p-3 shadow-sm">
+              <img src={qrUrl} alt="微信扫码授权" className="h-[210px] w-[210px] rounded-md object-cover" />
             </div>
-          ) : auth.error ? (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-              <AlertTitle className="font-serif text-base font-semibold tracking-tight">无法读取登录状态</AlertTitle>
-              <AlertDescription className="mt-1 flex flex-col gap-3 text-sm leading-7">
-                <span>{auth.error}</span>
-                <Button variant="outline" size="sm" onClick={loadAuth} className="self-start gap-1 active:scale-95">
-                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-                  重试
-                </Button>
-              </AlertDescription>
-            </Alert>
-          ) : (
-            auth.loggedIn ? (
-              /* 已登录态 —— 紧凑一行信息 */
-              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-4">
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#4F7A5A]" aria-hidden="true" />
-                  <span className="font-medium">登录有效</span>
-                  <span className="text-muted-foreground">·</span>
-                  <span className="font-mono text-[11px] text-muted-foreground tabular-nums truncate">
-                    {auth.tokenPreview || "暂无 token"}
-                  </span>
-                  <span className="text-muted-foreground">·</span>
-                  <span className="text-[11px] text-muted-foreground">
-                    凭证保存 {formatTime(auth.saveTime)}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleGenerateQr}
-                    disabled={qr.loading || waitingScan}
-                    className="h-7 gap-1.5 text-[12px] active:scale-95"
-                  >
-                    {qr.loading ? (
-                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <QrCode className="h-3 w-3" aria-hidden="true" />
-                    )}
-                    {qr.loading ? "生成中…" : waitingScan ? "等待扫码…" : "换号登录"}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              /* 未登录态 —— 二维码居中 + 按钮在下 */
-              <div className="flex flex-col items-center gap-3 py-1">
-                <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-sm border border-border bg-card overflow-hidden">
-                  {qr.loading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
-                  ) : qr.url ? (
-                    <img src={qr.url} alt="微信扫码登录二维码" className="h-full w-full object-contain" />
-                  ) : (
-                    <span className="text-[11px] leading-5 text-muted-foreground px-3 text-center">点击下方按钮生成二维码</span>
-                  )}
-                </div>
-
-                {qr.error && (
-                  <p className="text-[11px] leading-6 text-[#A94438]">{qr.error}</p>
-                )}
-
-                <p className="text-[12px] leading-6 text-muted-foreground text-center">
-                  {auth.loginState?.message || auth.message || "未登录。用微信扫码授权后自动写入账号池。"}
-                  {waitingScan && <span className="text-[#8a6520]">（正在等待扫码确认）</span>}
-                </p>
-
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleGenerateQr}
-                  disabled={qr.loading || waitingScan}
-                  className="h-8 gap-1.5 text-[12px] active:scale-95"
-                >
-                  {qr.loading ? (
-                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <QrCode className="h-3 w-3" aria-hidden="true" />
-                  )}
-                  {qr.loading ? "正在生成…" : waitingScan ? "等待扫码…" : "生成二维码"}
-                </Button>
-              </div>
-            )
-          )}
-        </CardContent>
-      </Card>
-
-      {/* 账号池概要 */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryBlock label="账号总数" value={summary.total} />
-        <SummaryBlock label="可用" value={summary.active} tone="success" />
-        <SummaryBlock label="冷却中" value={summary.cooldown} tone="warning" />
-        <SummaryBlock label="失效" value={summary.invalid} tone="danger" />
-      </section>
-
-      {/* 账号列表 */}
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="font-serif text-xl font-semibold tracking-tight">账号列表</h2>
-            <p className="mt-1 text-sm leading-7 text-muted-foreground">
-              共 {pool.total} 个账号。失败次数过多会进入冷却，失效账号可尝试复活。
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleVerifyAll}
-            disabled={pool.loading || action.busy === "verify-all"}
-            className="gap-2 active:scale-95"
-          >
-            {action.busy === "verify-all" ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            )}
-            校验全部
-          </Button>
+          ) : iconMap[status] || <Loader2 className="h-8 w-8 animate-spin text-[#12372e]" />}
         </div>
 
-        {action.error && (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-            <AlertTitle className="font-serif text-base font-semibold tracking-tight">操作失败</AlertTitle>
-            <AlertDescription className="mt-1 text-sm leading-7">{action.error}</AlertDescription>
-          </Alert>
-        )}
-        {action.success && (
-          <div className="rounded-md border border-[#4F7A5A]/30 bg-[#4F7A5A]/[0.06] px-4 py-2.5 text-sm leading-6 text-[#385742]">
-            {action.success}
+        {/* 状态文字 */}
+        <div
+          className="mt-4 min-h-[22px] text-[13px] font-medium"
+          style={{ color: msgColor }}
+        >
+          {error ? `获取失败: ${error}` : statusMsg}
+        </div>
+
+        {/* 过期/失败后的重试按钮 */}
+        {(status === "expired" || status === "failed") && (
+          <div className="mt-2">
+            <Button
+              variant="default" size="sm"
+              onClick={launchLogin}
+              className="rounded-md bg-[#C87137] hover:bg-[#C87137]/90 text-white active:scale-95"
+            >
+              {status === "expired" ? "刷新二维码" : "重新尝试"}
+            </Button>
           </div>
         )}
 
-        {pool.loading ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-4">
-                <Skeleton className="h-9 w-9 rounded-sm" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-3.5 w-32" />
-                  <Skeleton className="h-3 w-48" />
-                </div>
-                <Skeleton className="h-7 w-16 rounded-sm" />
-              </div>
-            ))}
-          </div>
-        ) : pool.error ? (
-          <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-            <AlertTitle className="font-serif text-base font-semibold tracking-tight">读取账号池失败</AlertTitle>
-            <AlertDescription className="mt-1 flex flex-col gap-3 text-sm leading-7">
-              <span>{pool.error}</span>
-              <Button variant="outline" size="sm" onClick={loadPool} className="self-start gap-1 active:scale-95">
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-                重试
-              </Button>
-            </AlertDescription>
-          </Alert>
-        ) : pool.accounts.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title="账号池还是空的"
-            description="点击上方「生成二维码」扫码登录，成功后账号会自动进入池中。"
-            action={
-              <Button size="sm" onClick={handleGenerateQr} disabled={qr.loading || waitingScan} className="gap-2 active:scale-95">
-                <QrCode className="h-3.5 w-3.5" aria-hidden="true" />
-                生成二维码
-              </Button>
-            }
-          />
-        ) : (
-          <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
-            {pool.accounts.map((acc) => {
-              const meta = statusMeta(acc.status)
-              const remain = Math.max(0, acc.cooldownUntil - now)
-              const refreshing = action.busy === `refresh:${acc.id}`
-              const reviving = action.busy === `revive:${acc.id}`
-              return (
-                <li key={acc.id || acc.vid} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {acc.avatar ? (
-                      <img src={acc.avatar} alt="" className="h-10 w-10 shrink-0 rounded-full border border-border object-cover" />
-                    ) : (
-                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#12372e] font-serif text-sm font-bold text-white">
-                        {acc.nickname.slice(0, 1)}
-                      </span>
-                    )}
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-medium">{acc.nickname}</span>
-                        <StatusBadge status={meta.badge} label={meta.label} />
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                        <span>设备 {acc.deviceName}</span>
-                        <span>失败 {acc.failures} 次</span>
-                        {remain > 0 && <span className="text-[#8a6520]">冷却剩余 {remain} 秒</span>}
-                        <span>保存 {formatTime(acc.saveTime)}</span>
-                      </div>
-                      {acc.lastError && (
-                        <p className="mt-1 truncate text-[11px] text-[#A94438]" title={acc.lastError}>
-                          最近错误：{acc.lastError}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex shrink-0 flex-col gap-1 sm:items-end">
-                    <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-                      {acc.tokenPreview || "无 token"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">最近使用 {formatTime(acc.lastUsed)}</span>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2 sm:ml-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRefresh(acc.id)}
-                      disabled={!acc.id || Boolean(action.busy)}
-                      className="gap-1 active:scale-95"
-                    >
-                      {refreshing && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                      刷新
-                    </Button>
-                    {acc.status === "invalid" && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleRevive(acc.id)}
-                        disabled={!acc.id || Boolean(action.busy)}
-                        className="gap-1 active:scale-95"
-                      >
-                        {reviving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
-                        复活
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
-    </div>
+        {/* 底部取消按钮 */}
+        <div className="mt-5 flex justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleClose} className="rounded-md active:scale-95">
+            取消
+          </Button>
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }
+QrLoginModal.propTypes = {
+  open: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSuccess: PropTypes.func,
+}
 
-/**
- * 概要数字块
- * @param {object} props
- * @param {string} props.label
- * @param {number} props.value
- * @param {'success'|'warning'|'danger'} [props.tone]
- */
-function SummaryBlock({ label, value, tone }) {
-  const valueClass =
-    tone === "success"
-      ? "text-[#385742]"
-      : tone === "warning"
-      ? "text-[#8a6520]"
-      : tone === "danger"
-      ? "text-[#7d2f26]"
-      : "text-foreground"
+// ── 主页面 ──────────────────────────────────────────────────────
+export function AccountPoolPage() {
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState("")
+  const [accounts, setAccounts] = React.useState([])
+  const [summary, setSummary] = React.useState(null)
+  const [qrOpen, setQrOpen] = React.useState(false)
+  const [busy, setBusy] = React.useState("")
+  const [toast, setToast] = React.useState({ type: "", text: "" })
+
+  const showToast = React.useCallback((type, text) => {
+    setToast({ type, text })
+    setTimeout(() => setToast({ type: "", text: "" }), 3000)
+  }, [])
+
+  const loadAccounts = React.useCallback(async () => {
+    setLoading(true)
+    setError("")
+    try {
+      const [list, sum] = await Promise.all([api.listPool(), api.poolSummary()])
+      setAccounts(list.accounts || [])
+      setSummary(sum)
+    } catch (err) {
+      setError(err?.message || "加载账号列表失败")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  React.useEffect(() => { loadAccounts() }, [loadAccounts])
+
+  const handleRefresh = async (id) => {
+    setBusy(`refresh:${id}`)
+    showToast("", "")
+    try {
+      await api.refreshAccount(id)
+      showToast("success", "Token 刷新成功")
+      await loadAccounts()
+    } catch (err) {
+      showToast("error", err?.message || "刷新失败")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const handleVerify = async (id) => {
+    setBusy(`verify:${id}`)
+    try {
+      const res = await api.verifyAccount(id)
+      showToast(res.valid ? "success" : "warning", res.message || "验证完成")
+    } catch (err) {
+      showToast("error", err?.message || "验证失败")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const handleRemove = async (id) => {
+    const acc = accounts.find((a) => a.id === id)
+    const name = acc?.nickname || "该账号"
+    if (!window.confirm(`确定要从账号池中删除「${name}」吗？`)) return
+    try {
+      await api.removeAccount(id)
+      showToast("success", "已删除")
+      await loadAccounts()
+    } catch (err) {
+      showToast("error", err?.message || "删除失败")
+    }
+  }
+
+  const handleQrSuccess = React.useCallback(async () => {
+    setQrOpen(false)
+    showToast("success", "微信读书账号登录成功！")
+    await loadAccounts()
+  }, [loadAccounts, showToast])
+
+  const empty = !loading && !error && accounts.length === 0
+
   return (
-    <div className="rounded-md border border-border bg-card px-4 py-3">
-      <div className={`font-serif text-3xl font-bold tabular-nums leading-none ${valueClass}`}>{value}</div>
-      <div className="mt-1.5 text-[11px] tracking-wide text-muted-foreground">{label}</div>
+    <div className="flex flex-col gap-6">
+      {/* 顶部标题行 */}
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-serif text-2xl font-bold tracking-tight text-[#1A1A1A]">
+            微信读书账号池
+          </h1>
+          <p className="mt-1 text-[13px] text-[#6B6B6B]">
+            管理您的微信读书账号池与登录状态，凭证只保存在本机
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline" size="sm"
+            onClick={loadAccounts}
+            disabled={loading || Boolean(busy)}
+            className="gap-1.5 rounded-md text-[13px] active:scale-95"
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            🔄 刷新列表
+          </Button>
+          <Button
+            variant="default" size="sm"
+            onClick={() => setQrOpen(true)}
+            disabled={Boolean(busy)}
+            className="gap-1.5 rounded-md bg-[#12372e] text-white font-semibold hover:bg-[#12372e]/90 text-[13px] active:scale-95"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            扫码添加账号
+          </Button>
+        </div>
+      </header>
+
+      {/* 概要胶囊 */}
+      {summary && !loading && (
+        <div className="flex flex-wrap gap-2">
+          <SummaryPill icon={<span>🟢</span>} label="可用账号" value={summary.active} tone="green" />
+          {summary.cooldown > 0 && (
+            <SummaryPill icon={<span>🟡</span>} label="冷却中" value={summary.cooldown} tone="amber" />
+          )}
+          {(summary.banned + summary.invalid) > 0 && (
+            <SummaryPill icon={<span>🔴</span>} label="已失效" value={summary.banned + summary.invalid} tone="red" />
+          )}
+          <SummaryPill icon={<Users className="h-3.5 w-3.5" />} label="共" value={summary.total} tone="gray" />
+        </div>
+      )}
+
+      {/* 错误提示 */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle className="font-serif text-base font-semibold">加载失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* 账号网格 */}
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-md border border-[#1A1A1A]/10 bg-white p-5">
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="mt-3 h-4 w-40" />
+              <Skeleton className="mt-6 h-20 w-full rounded-md" />
+            </div>
+          ))}
+        </div>
+      ) : empty ? (
+        <div className="rounded-md border border-dashed border-[#1A1A1A]/20 bg-white p-16 text-center">
+          <div className="mb-4 text-5xl opacity-60">📖</div>
+          <h3 className="mb-2 font-serif text-lg font-semibold text-[#1A1A1A]">
+            微信读书账号池为空
+          </h3>
+          <p className="mx-auto mb-6 max-w-lg text-[13px] leading-7 text-[#6B6B6B]">
+            点击右上角「扫码添加账号」，使用手机微信扫码授权登录，系统将自动录入并静默维护换票凭证。
+          </p>
+          <Button
+            variant="default" size="sm"
+            onClick={() => setQrOpen(true)}
+            className="rounded-md bg-[#12372e] text-white font-semibold hover:bg-[#12372e]/90 active:scale-95"
+          >
+            <Smartphone className="mr-1.5 h-4 w-4" /> 立即扫码添加
+          </Button>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {accounts.map((acc) => (
+            <AccountCard
+              key={acc.id || acc.vid}
+              acc={acc}
+              busy={busy}
+              onRefresh={handleRefresh}
+              onVerify={handleVerify}
+              onRescan={() => setQrOpen(true)}
+              onRemove={handleRemove}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* 全屏扫码 Modal */}
+      <QrLoginModal open={qrOpen} onClose={() => setQrOpen(false)} onSuccess={handleQrSuccess} />
+
+      {/* Toast */}
+      {toast.text && (
+        <div
+          className="fixed bottom-6 left-1/2 z-[10000] -translate-x-1/2 rounded-md px-5 py-2.5 text-sm font-medium text-white shadow-lg"
+          style={{
+            background: toast.type === "error" ? "#7d2f26" :
+              toast.type === "warning" ? "#C87137" :
+              toast.type === "success" ? "#12372e" : "#1A1A1A",
+          }}
+        >
+          {toast.text}
+        </div>
+      )}
     </div>
   )
 }
 
-SummaryBlock.propTypes = {
-  label: PropTypes.string.isRequired,
-  value: PropTypes.number.isRequired,
-  tone: PropTypes.oneOf(["success", "warning", "danger"]),
+AccountPoolPage.propTypes = {
+  onNavigate: PropTypes.func,
 }

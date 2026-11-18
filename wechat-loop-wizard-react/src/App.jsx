@@ -9,8 +9,9 @@ import { useHashRoute } from "@/hooks/useHashRoute"
 const ROUTES = {
   pool: () => import("@/pages/AccountPoolPage").then((m) => m.AccountPoolPage),
   accounts: () => import("@/pages/AccountsPage").then((m) => m.AccountsPage),
-  collect: () => import("@/pages/CollectPage").then((m) => m.CollectPage),
-  tasks: () => import("@/pages/TasksPage").then((m) => m.TasksPage),
+  articles: () => import("@/pages/ArticlesPage").then((m) => m.ArticlesPage || m.default),
+  download: () => import("@/pages/DownloadPage").then((m) => m.DownloadPage),
+  history: () => import("@/pages/HistoryPage").then((m) => m.HistoryPage || m.default),
   library: () => import("@/pages/LibraryPage").then((m) => m.LibraryPage),
   settings: () => import("@/pages/SettingsPage").then((m) => m.SettingsPage),
 }
@@ -19,7 +20,7 @@ const VALID_KEYS = new Set(Object.keys(ROUTES))
 
 export default function App() {
   const [path, navigate] = useHashRoute()
-  const key = VALID_KEYS.has(path) ? path : "collect"
+  const key = VALID_KEYS.has(path) ? path : "pool"
   const [PageComponent, setPageComponent] = React.useState(null)
   const [loading, setLoading] = React.useState(true)
   const [animKey, setAnimKey] = React.useState(0)

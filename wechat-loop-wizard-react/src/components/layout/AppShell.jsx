@@ -12,12 +12,13 @@ import { cn } from "@/lib/utils"
  * @param {React.ReactNode} props.children 主内容区
  */
 const NAV_ITEMS = [
-  { key: "pool", label: "账号池", icon: "Users", hint: "扫码登录 · 多号轮换" },
-  { key: "accounts", label: "公众号管理", icon: "BookOpen", hint: "搜索、关注、批量采集" },
-  { key: "collect", label: "采集向导", icon: "Compass", hint: "输入公众号，自动发现文章" },
-  { key: "tasks", label: "采集任务", icon: "ListTodo", hint: "进度、失败、停机、重试" },
-  { key: "library", label: "入库文章", icon: "Library", hint: "浏览、搜索、筛选" },
-  { key: "settings", label: "设置与诊断", icon: "Settings", hint: "通道降级、防作弊自检" },
+  { key: "pool",      label: "账号池",    icon: "Users",     hint: "扫码添加账号 · 多号轮换" },
+  { key: "accounts",  label: "公众号管理",icon: "BookOpen",   hint: "搜索、关注、批量采集" },
+  { key: "articles",  label: "公众号文章",icon: "Newspaper",  hint: "浏览已关注公众号文章 · 批量下载" },
+  { key: "download",  label: "网址下载",  icon: "Download",   hint: "粘贴文章链接 · 内容过滤" },
+  { key: "history",   label: "下载历史",  icon: "History",    hint: "双栏预览 · 打开 MD/PDF · RSS" },
+  { key: "library",   label: "入库文章",  icon: "Library",    hint: "知识库 · 浏览搜索筛选" },
+  { key: "settings",  label: "设置",      icon: "Settings",   hint: "通道、降级、诊断" },
 ]
 
 export function AppShell({ current, onNavigate, children }) {
@@ -108,10 +109,12 @@ function NavIcon({ name, className, active }) {
       return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
     case "BookOpen":
       return <svg {...common}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
-    case "Compass":
-      return <svg {...common}><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></svg>
-    case "ListTodo":
-      return <svg {...common}><path d="M12 20h9" /><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z" /><path d="m15 5 3 3" /></svg>
+    case "Newspaper":
+      return <svg {...common}><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8" /><path d="M15 18h-5" /><path d="M10 6h8v4h-8V6Z" /></svg>
+    case "Download":
+      return <svg {...common}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+    case "History":
+      return <svg {...common}><path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /><path d="M12 7v5l4 2" /></svg>
     case "Library":
       return <svg {...common}><path d="m16 6 4 14" /><path d="M12 6v14" /><path d="M8 8v12" /><path d="M4 4v16" /></svg>
     case "Settings":
