@@ -28,7 +28,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WECHAT_FLOW_FILM = ROOT.parent / "wechat-flow-film"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from upstream import upstream_dir  # noqa: E402
+
+WECHAT_FLOW_FILM = upstream_dir("wechat-flow-film")
 COOKIES_PATH = WECHAT_FLOW_FILM / "cookies.json"
 HISTORY_PATH = ROOT / "loop" / "history.json"
 

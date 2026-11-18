@@ -35,6 +35,10 @@ from urllib.parse import urlparse, parse_qs
 import requests
 
 ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from upstream import upstream_dir  # noqa: E402
+
 PROFILE_DIR = os.environ.get("CHROME_PROFILE", str(Path.home() / ".chrome-profile"))
 STATE_DIR = Path.home() / ".cache" / "chrome-devtools-mcp" / "chrome-profile"
 MP_BASE = "https://mp.weixin.qq.com"
@@ -87,7 +91,7 @@ def load_credentials() -> dict:
                 cred["cookie"] = v
 
     # 3. Playwright cookies.json（Phase 1.2 后自动生成）
-    cookie_file = ROOT / "../wechat-flow-film/cookies.json"
+    cookie_file = upstream_dir("wechat-flow-film") / "cookies.json"
     if cookie_file.exists():
         try:
             data = json.loads(cookie_file.read_text())
@@ -115,7 +119,7 @@ def load_credentials() -> dict:
             pass
 
     # 4. 上游 credentials.json（wechat-digest-skill 兼容）
-    upstream_cred = ROOT.parent / "wechat-digest-skill" / "credentials.json"
+    upstream_cred = upstream_dir("wechat-digest-skill") / "credentials.json"
     if upstream_cred.exists():
         try:
             data = json.loads(upstream_cred.read_text())

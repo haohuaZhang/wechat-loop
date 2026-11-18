@@ -12,7 +12,10 @@ import sys
 from pathlib import Path
 
 # 上游路径（只读，不修改）
-UPSTREAM_TOOLKIT = Path(__file__).resolve().parent.parent.parent / "wechat-flow" / "toolkit"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from upstream import upstream_dir  # noqa: E402
+
+UPSTREAM_TOOLKIT = upstream_dir("wechat-flow") / "toolkit"
 
 
 def convert(md_path: Path, theme_name: str = "professional-clean") -> dict:
