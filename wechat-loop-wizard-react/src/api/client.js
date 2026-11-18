@@ -21,6 +21,10 @@
  *   POST   /api/account-pool/<id>/refresh       刷新账号 Token
  *   POST   /api/account-pool/<id>/revive        复活失效账号
  *   ── RSS 订阅 ──
+ *   GET    /api/accounts                        已收藏公众号列表
+ *   POST   /api/accounts/search                 搜索公众号（关键字 / 链接 / biz）
+ *   POST   /api/accounts                        收藏/添加公众号
+ *   DELETE /api/accounts/<fakeid>               取消收藏公众号
  *   GET    /api/accounts/rss-subscriptions      RSS 订阅列表
  *   POST   /api/accounts/<fakeid>/rss-subscribe 启用 RSS 订阅
  *   POST   /api/accounts/<fakeid>/rss-force-upload 立即上传待传文章
@@ -123,6 +127,29 @@ function normalizeSummary(raw = {}) {
     cooldown: Number(raw.cooldown) || 0,
     invalid: Number(raw.invalid) || 0,
     banned: Number(raw.banned) || 0,
+  }
+}
+
+function normalizeAccount(raw = {}) {
+  return {
+    fakeid: raw.fakeid || "",
+    bookId: raw.bookId || "",
+    nickname: raw.nickname || raw.alias || "未命名公众号",
+    avatar: raw.round_head_img || raw.avatar || "",
+    signature: raw.signature || "",
+    subscribeCount: Number(raw.subscribe_count) || 0,
+    updateTime: Number(raw.update_time || raw.added_time) || 0,
+  }
+}
+
+function normalizeArticle(raw = {}) {
+  return {
+    id: raw.id || raw.article_id || raw.appmsgid || String(Math.random()).slice(-8),
+    title: raw.title || "未命名文章",
+    author: raw.author || "",
+    publishAt: raw.update_time || raw.create_time || 0,
+    digest: raw.digest || "",
+    url: raw.link || raw.url || "",
   }
 }
 
@@ -534,6 +561,279 @@ export const api = {
       return { ok: true, auth: res, loggedIn: res.logged_in }
     } catch (err) {
       return { ok: false, message: err.message }
+    }
+  },
+
+  // ── 下载历史浏览（单文章维度） ──
+
+  /**
+   * 拉取下载历史（单文章维度，按时间倒序）
+   * 返回 { items: [...], total }
+   * 每个 item: { _index, title, account, link, success, time, path, displayPath, hasMarkdown, hasPdf, digest, error }
+   */
+  async listHistory() {
+    if (USE_MOCK) {
+      await delay(300)
+      return {
+        items: [
+          { _index: 0, title: "S15 世界赛复盘：两支 LPL 队伍的 BP 思路差异", account: "游戏汇总", link: "https://mp.weixin.qq.com/s/demo-s15", success: true, time: 1763130000, path: "downloads/游戏汇总/S15世界赛复盘.md", displayPath: "~/Downloads/游戏汇总/S15世界赛复盘.md", hasMarkdown: true, hasPdf: false, digest: "本届世界赛四强战中...", error: "" },
+          { _index: 1, title: "11 月新游观察：三款独立作品在 Switch 上的表现", account: "游戏研究社", link: "https://mp.weixin.qq.com/s/demo-indie", success: true, time: 1762950000, path: "downloads/游戏研究社/11月新游观察.md", displayPath: "~/Downloads/游戏研究社/11月新游观察.md", hasMarkdown: true, hasPdf: true, digest: "十一月任天堂 eShop 迎来一波...", error: "" },
+          { _index: 2, title: "小游戏长线运营的三条路径", account: "手游那点事", link: "https://mp.weixin.qq.com/s/demo-mini", success: false, time: 1762770000, path: "", displayPath: "", hasMarkdown: false, hasPdf: false, digest: "", error: "目标页面不存在或已被删除" },
+        ],
+        total: 3,
+      }
+    }
+    try {
+      const res = await fetchJSON("/api/articles/history")
+      const items = (res.history || []).map((h) => ({
+        _index: h._index ?? null,
+        title: h.title || "",
+        account: h.account || h.account_name || "",
+        link: h.link || "",
+        success: Boolean(h.success),
+        time: Number(h.time) || 0,
+        path: h.path || "",
+        displayPath: h.display_path || "",
+        hasMarkdown: Boolean(h.has_markdown),
+        hasPdf: Boolean(h.has_pdf),
+        digest: h.digest || "",
+        error: h.error || "",
+      }))
+      return { items, total: Number(res.total) || items.length }
+    } catch (err) {
+      throw toError(err, "读取下载历史失败")
+    }
+  },
+
+  /**
+   * 删除下载历史（全部 或 单条）
+   * @param {number} [index] 不传则清空全部；传数字则删除对应下标语
+   */
+  async deleteHistory(index) {
+    if (USE_MOCK) {
+      await delay(300)
+      return { ok: true, message: typeof index === "number" ? "已删除该条记录" : "历史已清空" }
+    }
+    try {
+      const url = typeof index === "number" && index >= 0
+        ? `/api/articles/history/${encodeURIComponent(index)}`
+        : "/api/articles/history"
+      const res = await fetch(url, { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.text().catch(() => "")
+        throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+      }
+      return await res.json()
+    } catch (err) {
+      throw toError(err, "删除历史失败")
+    }
+  },
+
+  /**
+   * 在系统默认程序中打开文件
+   * @param {string} filePath 绝对路径
+   * @param {"md"|"pdf"} [targetType] 当 filePath 是目录时，指定打开其中哪种文件
+   */
+  async openFile(filePath, targetType) {
+    if (USE_MOCK) { await delay(200); return { ok: true, message: "已打开" } }
+    try {
+      const body = { path: filePath }
+      if (targetType) body.type = targetType
+      return await fetchJSON("/api/articles/open-file", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+    } catch (err) {
+      throw toError(err, "打开文件失败")
+    }
+  },
+
+  /**
+   * 打开公众号下载目录（或指定的绝对路径文件夹）
+   * @param {string} dirPathOrAccount 绝对路径 或 公众号名称（后端会自动定位 download_dir/account）
+   */
+  async openFolder(dirPathOrAccount) {
+    if (USE_MOCK) { await delay(200); return { ok: true, message: "文件夹已打开" } }
+    try {
+      const body = dirPathOrAccount && /^[\/~]/.test(dirPathOrAccount)
+        ? { path: dirPathOrAccount }
+        : { account: dirPathOrAccount }
+      return await fetchJSON("/api/articles/open-folder", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+    } catch (err) {
+      throw toError(err, "打开文件夹失败")
+    }
+  },
+
+  /**
+   * 在系统文件管理器中打开文件所在目录（并高亮文件）
+   * @param {string} filePath 绝对路径
+   */
+  async openParent(filePath) {
+    if (USE_MOCK) { await delay(200); return { ok: true, message: "已打开所在目录" } }
+    try {
+      return await fetchJSON("/api/articles/open-parent", {
+        method: "POST",
+        body: JSON.stringify({ path: filePath }),
+      })
+    } catch (err) {
+      throw toError(err, "打开所在目录失败")
+    }
+  },
+
+  // ── 公众号管理 ──────────────────────────────────────
+
+  /**
+   * 已收藏的公众号列表
+   * GET /api/accounts
+   * 返回 { accounts: [{fakeid, bookId, nickname, avatar, signature, subscribeCount, updateTime}], total }
+   */
+  async listFavorites() {
+    if (USE_MOCK) {
+      await delay(200)
+      return { accounts: [], total: 0 }
+    }
+    try {
+      const res = await fetchJSON("/api/accounts")
+      const accounts = (res?.accounts || []).map(normalizeAccount)
+      return { accounts, total: Number(res?.total) || accounts.length }
+    } catch (err) {
+      throw toError(err, "读取公众号列表失败")
+    }
+  },
+
+  /**
+   * 搜索公众号（按关键字 / 文章链接 / biz）
+   * POST /api/accounts/search  body: { keyword }
+   * 返回 { results: [{fakeid, bookId, nickname, avatar, signature}] }
+   */
+  async searchAccounts(keyword) {
+    const kw = String(keyword || "").trim()
+    if (!kw) throw new Error("请输入搜索关键字或文章链接")
+    if (USE_MOCK) {
+      await delay(350)
+      return { results: [] }
+    }
+    try {
+      const res = await fetchJSON("/api/accounts/search", {
+        method: "POST",
+        body: JSON.stringify({ keyword: kw }),
+      })
+      const results = (res?.results || []).map(normalizeAccount)
+      return { results }
+    } catch (err) {
+      throw toError(err, "搜索公众号失败")
+    }
+  },
+
+  /**
+   * 收藏/添加公众号
+   * POST /api/accounts  body: { fakeid, nickname, bookId?, avatar? }
+   * 返回 { ok, account, message }
+   * @param {{fakeid: string, nickname?: string, bookId?: string, avatar?: string}} payload
+   */
+  async addFavorite(payload) {
+    if (!payload?.fakeid) throw new Error("缺少 fakeid")
+    if (!payload?.nickname) throw new Error("缺少公众号名称")
+    if (USE_MOCK) {
+      await delay(250)
+      return { ok: true, account: normalizeAccount(payload), message: "添加成功" }
+    }
+    try {
+      const body = { fakeid: payload.fakeid, nickname: payload.nickname }
+      if (payload.bookId) body.bookId = payload.bookId
+      if (payload.avatar) body.round_head_img = payload.avatar
+      const res = await fetchJSON("/api/accounts", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+      return {
+        ok: true,
+        account: res?.account
+          ? normalizeAccount(res.account)
+          : normalizeAccount({ ...payload, update_time: Math.floor(Date.now() / 1000) }),
+        message: res?.message || "添加成功",
+      }
+    } catch (err) {
+      throw toError(err, "添加公众号失败")
+    }
+  },
+
+  /**
+   * 取消收藏公众号
+   * DELETE /api/accounts/<fakeid>
+   * 返回 { ok }
+   */
+  async removeFavorite(fakeid) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) { await delay(200); return { ok: true } }
+    try {
+      await fetchJSON(`/api/accounts/${encodeURIComponent(fakeid)}`, { method: "DELETE" })
+      return { ok: true }
+    } catch (err) {
+      throw toError(err, "取消收藏失败")
+    }
+  },
+
+  /**
+   * 分页获取指定公众号的文章列表
+   * GET /api/articles/list/<fakeid>?begin=<begin>&count=<count>
+   * @param {string} fakeid
+   * @param {{begin?: number, count?: number}} [options]
+   * 返回 { articles, total, canContinue, throttled, cooldownLeft }
+   */
+  async listArticlesPage(fakeid, { begin = 0, count = 20 } = {}) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) {
+      await delay(300)
+      return { articles: [], total: 0, canContinue: false, throttled: false, cooldownLeft: 0 }
+    }
+    try {
+      const qs = new URLSearchParams({ begin: String(begin), count: String(count) }).toString()
+      const res = await fetchJSON(`/api/articles/list/${encodeURIComponent(fakeid)}?${qs}`)
+      const articles = (res?.articles || []).map(normalizeArticle)
+      return {
+        articles,
+        total: Number(res?.total) || articles.length,
+        canContinue: Boolean(res?.can_msg_continue) || articles.length >= count,
+        throttled: Boolean(res?.throttled),
+        cooldownLeft: Number(res?.cooldown_left) || 0,
+      }
+    } catch (err) {
+      throw toError(err, "读取文章列表失败")
+    }
+  },
+
+  /**
+   * 批量下载文章（从文章浏览 Tab 调用）
+   * POST /api/articles/download  body: { articles: [{link,title,digest,...}], account_name }
+   * 返回 { taskId, message }
+   * @param {{articles: Array<{url:string,title?:string,digest?:string,publishAt?:number}>, accountName?: string}} payload
+   */
+  async downloadArticles({ articles, accountName = "unknown" }) {
+    const list = (Array.isArray(articles) ? articles : []).filter(Boolean)
+    if (!list.length) throw new Error("请至少选择一篇文章")
+    if (USE_MOCK) {
+      await delay(350)
+      return { taskId: `batch_demo_${Date.now()}`, message: `已启动下载任务，共 ${list.length} 篇` }
+    }
+    try {
+      const payload = list.map((a) => ({
+        link: a.url || a.link || "",
+        title: a.title || "",
+        digest: a.digest || "",
+        update_time: a.publishAt || 0,
+      })).filter((x) => x.link)
+      const res = await fetchJSON("/api/articles/download", {
+        method: "POST",
+        body: JSON.stringify({ articles: payload, account_name: accountName }),
+      })
+      if (!res?.task_id) throw new Error("服务未返回任务 ID")
+      return { taskId: res.task_id, message: res.message || `已启动下载任务，共 ${payload.length} 篇` }
+    } catch (err) {
+      throw toError(err, "启动批量下载失败")
     }
   },
 }

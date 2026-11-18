@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
  */
 const NAV_ITEMS = [
   { key: "pool", label: "账号池", icon: "Users", hint: "扫码登录 · 多号轮换" },
+  { key: "accounts", label: "公众号管理", icon: "BookOpen", hint: "搜索、关注、批量采集" },
   { key: "collect", label: "采集向导", icon: "Compass", hint: "输入公众号，自动发现文章" },
   { key: "tasks", label: "采集任务", icon: "ListTodo", hint: "进度、失败、停机、重试" },
   { key: "library", label: "入库文章", icon: "Library", hint: "浏览、搜索、筛选" },
@@ -105,6 +106,8 @@ function NavIcon({ name, className, active }) {
   switch (name) {
     case "Users":
       return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+    case "BookOpen":
+      return <svg {...common}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>
     case "Compass":
       return <svg {...common}><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></svg>
     case "ListTodo":

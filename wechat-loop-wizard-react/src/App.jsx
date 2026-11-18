@@ -8,6 +8,7 @@ import { useHashRoute } from "@/hooks/useHashRoute"
  */
 const ROUTES = {
   pool: () => import("@/pages/AccountPoolPage").then((m) => m.AccountPoolPage),
+  accounts: () => import("@/pages/AccountsPage").then((m) => m.AccountsPage),
   collect: () => import("@/pages/CollectPage").then((m) => m.CollectPage),
   tasks: () => import("@/pages/TasksPage").then((m) => m.TasksPage),
   library: () => import("@/pages/LibraryPage").then((m) => m.LibraryPage),
@@ -51,7 +52,7 @@ export default function App() {
           key={animKey}
           className="page-enter"
         >
-          <PageComponent />
+          <PageComponent onNavigate={navigate} />
         </div>
       )}
     </AppShell>

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils"
 
 const TABS = [
   { key: "wechat", label: "公众号采集", hint: "搜索并一键采集" },
+  { key: "browse", label: "文章浏览", hint: "从已关注列表里挑文章" },
   { key: "url", label: "链接下载", hint: "粘贴文章链接批量下载" },
   { key: "rss", label: "RSS 订阅", hint: "定时抓取与上传" },
 ]
@@ -53,7 +54,7 @@ export function CollectTabs({ value, onChange, className }) {
 }
 
 CollectTabs.propTypes = {
-  value: PropTypes.oneOf(["wechat", "url", "rss"]).isRequired,
+  value: PropTypes.oneOf(["wechat", "browse", "url", "rss"]).isRequired,
   onChange: PropTypes.func.isRequired,
   className: PropTypes.string,
 }
