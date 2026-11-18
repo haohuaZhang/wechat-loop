@@ -1148,6 +1148,106 @@ export const api = {
   },
 
   /**
+   * 一键采集当前公众号最新文章
+   * POST /api/articles/collect-latest
+   * 返回 { taskId, message }
+   * @param {{fakeid: string, account_name?: string, limit?: number, skip_existing?: boolean}} payload
+   */
+  async collectLatest({ fakeid, account_name = "", limit = 50, skip_existing = true }) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) {
+      await delay(400)
+      return { taskId: `collect_${Date.now()}`, message: `已启动采集，约 ${limit} 篇` }
+    }
+    try {
+      const res = await fetchJSON("/api/articles/collect-latest", {
+        method: "POST",
+        body: JSON.stringify({ fakeid, account_name, limit, skip_existing }),
+      })
+      return { taskId: res?.task_id || "", message: res?.message || "已启动采集" }
+    } catch (err) {
+      throw toError(err, "启动采集失败")
+    }
+  },
+
+  /**
+   * 按时间范围批量下载
+   * POST /api/articles/download-date-range
+   * 返回 { taskId, message }
+   * @param {{fakeid: string, account_name?: string, start_time: number, end_time: number, keyword?: string, page_size?: number}} payload
+   */
+  async downloadRange({ fakeid, account_name = "", start_time, end_time, keyword = "", page_size = 20 }) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (!start_time || !end_time) throw new Error("需要 start_time 和 end_time")
+    if (USE_MOCK) {
+      await delay(300)
+      return { taskId: `dl_range_${Date.now()}`, message: "已启动按时间范围下载" }
+    }
+    try {
+      const res = await fetchJSON("/api/articles/download-date-range", {
+        method: "POST",
+        body: JSON.stringify({ fakeid, account_name, start_time, end_time, keyword, page_size }),
+      })
+      return { taskId: res?.task_id || "", message: res?.message || "已启动按时间下载" }
+    } catch (err) {
+      throw toError(err, "按时间范围下载失败")
+    }
+  },
+
+  /**
+   * 清除防水墙（人机验证）状态
+   * POST /api/waterwall/clear
+   */
+  async clearWaterwall() {
+    if (USE_MOCK) return { ok: true }
+    try {
+      return await fetchJSON("/api/waterwall/clear", { method: "POST" })
+    } catch (err) {
+      throw toError(err, "清除防水墙失败")
+    }
+  },
+
+  /**
+   * 自动为指定公众号同步 PC 微信凭证（打开公众号主页建立阅读会话）
+   * POST /api/accounts/sync-pc-wechat  body: { keyword }
+   * @param {string} keyword 公众号名称
+   */
+  async syncPcWechat(keyword) {
+    if (!keyword) throw new Error("缺少公众号名称")
+    if (USE_MOCK) return { success: true, message: "已触发自动同步" }
+    try {
+      return await fetchJSON("/api/accounts/sync-pc-wechat", {
+        method: "POST",
+        body: JSON.stringify({ keyword }),
+      })
+    } catch (err) {
+      throw toError(err, "自动同步凭证失败")
+    }
+  },
+
+  /**
+   * 带搜索关键字的文章列表（原版 API.articles.list）
+   * GET /api/articles/list/<fakeid>?begin=&count=&keyword=
+   * 返回原始 { articles, total, can_msg_continue }
+   * @param {string} fakeid
+   * @param {{begin?: number, count?: number, keyword?: string}} [options]
+   */
+  async fetchArticlesList(fakeid, { begin = 0, count = 20, keyword = "" } = {}) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) {
+      await delay(300)
+      return { articles: [], total: 0, can_msg_continue: 0 }
+    }
+    try {
+      const qs = new URLSearchParams({ begin: String(begin), count: String(count) })
+      if (keyword) qs.set("keyword", keyword)
+      return await fetchJSON(`/api/articles/list/${encodeURIComponent(fakeid)}?${qs.toString()}`)
+    } catch (err) {
+      throw toError(err, "读取文章列表失败")
+    }
+  },
+
+  /**
    * 批量下载文章（从文章浏览 Tab 调用）
    * POST /api/articles/download  body: { articles: [{link,title,digest,...}], account_name }
    * 返回 { taskId, message }
