@@ -30,7 +30,7 @@
  *   POST   /api/kb/active                      切换活动知识库
  */
 
-const USE_MOCK = true
+const USE_MOCK = false
 
 /**
  * 统一 fetch 封装
