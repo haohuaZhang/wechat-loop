@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils"
  * @param {React.ReactNode} props.children 主内容区
  */
 const NAV_ITEMS = [
+  { key: "pool", label: "账号池", icon: "Users", hint: "扫码登录 · 多号轮换" },
   { key: "collect", label: "采集向导", icon: "Compass", hint: "输入公众号，自动发现文章" },
   { key: "tasks", label: "采集任务", icon: "ListTodo", hint: "进度、失败、停机、重试" },
   { key: "library", label: "入库文章", icon: "Library", hint: "浏览、搜索、筛选" },
@@ -102,6 +103,8 @@ function NavIcon({ name, className, active }) {
   const stroke = active ? "currentColor" : "currentColor"
   const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", className }
   switch (name) {
+    case "Users":
+      return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
     case "Compass":
       return <svg {...common}><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></svg>
     case "ListTodo":

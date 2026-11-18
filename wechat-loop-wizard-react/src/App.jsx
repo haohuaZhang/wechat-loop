@@ -7,6 +7,7 @@ import { useHashRoute } from "@/hooks/useHashRoute"
  * 路由表 —— 所有页面在一处注册
  */
 const ROUTES = {
+  pool: () => import("@/pages/AccountPoolPage").then((m) => m.AccountPoolPage),
   collect: () => import("@/pages/CollectPage").then((m) => m.CollectPage),
   tasks: () => import("@/pages/TasksPage").then((m) => m.TasksPage),
   library: () => import("@/pages/LibraryPage").then((m) => m.LibraryPage),

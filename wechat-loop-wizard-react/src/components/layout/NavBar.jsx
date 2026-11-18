@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 const PAGE_TITLES = {
+  pool: "账号池",
   collect: "采集向导",
   tasks: "采集任务",
   library: "入库文章",
