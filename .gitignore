@@ -76,10 +76,3 @@ Thumbs.db
 
 # ── 旧静态原型（React + shadcn/ui 版已覆盖）──
 prototypes/
-
-# ── Trae HTML 分享缓存 ──
-.trae-html-share-packages/
-
-# 放行前端工程必需文件（被上方 *.json 误伤）
-!wechat-loop-wizard-react/package.json
-!wechat-loop-wizard-react/package-lock.json

@@ -9,15 +9,16 @@ import { Progress } from "@/components/ui/progress"
  * @param {number} props.value 0-100
  * @param {boolean} [props.running] 是否进行中（加 animate-pulse）
  * @param {string} [props.current] 当前采集到的公众号/文章提示
+ * @param {string} [props.label] 进度标题，默认「采集进度」
  * @param {string} [props.className]
  */
-export function CollectProgress({ value, running, current, className }) {
+export function CollectProgress({ value, running, current, label = "采集进度", className }) {
   const pct = Math.max(0, Math.min(100, Math.round(value)))
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-baseline justify-between">
         <span className="text-xs font-medium tracking-wide text-muted-foreground">
-          采集进度
+          {label}
         </span>
         <span className="font-mono text-sm font-semibold text-foreground tabular-nums">
           {pct}%
@@ -38,5 +39,6 @@ CollectProgress.propTypes = {
   value: PropTypes.number.isRequired,
   running: PropTypes.bool,
   current: PropTypes.string,
+  label: PropTypes.string,
   className: PropTypes.string,
 }

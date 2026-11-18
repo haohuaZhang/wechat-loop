@@ -62,11 +62,15 @@ python3 scripts/wizard_server.py --help >/dev/null 2>&1 \
 # ── 3. 上游依赖检查 ──────────────────────────────────────────
 echo ""
 echo "③ 上游仓库 & 依赖"
-for repo in wechat-flow wechat-flow-film; do
-    if [[ -d "../$repo" ]]; then
-        pass "$repo/ 存在"
+resolve_up() {
+    python3 -c "import sys;sys.path.insert(0,'scripts');from upstream import upstream_dir;print(upstream_dir('$1'))" 2>/dev/null
+}
+for repo in wechat-flow wechat-flow-film wechat-digest-skill; do
+    dir="$(resolve_up "$repo")"
+    if [[ -n "$dir" && -d "$dir" ]]; then
+        pass "$repo/ 存在（$dir）"
     else
-        warn "未发现 ../$repo — 请手动 clone 到 /workspace/"
+        fail "$repo/ 未找到（可放仓库内或同级，或设 WECHAT_LOOP_UPSTREAM_DIR）"
     fi
 done
 # references & personas
@@ -75,7 +79,7 @@ for f in references/writing-guide.md references/frameworks.md references/exempla
 done
 
 # convert_md 需要上游 converter（所以在 wechat-flow 存在时才测）
-if [[ -f "../wechat-flow/toolkit/converter.py" ]]; then
+if [[ -f "$(resolve_up wechat-flow)/toolkit/converter.py" ]]; then
     python3 scripts/convert_md.py loop/kb/demo/demo1.md --theme sspai --out /tmp/verify.html >/dev/null 2>&1 \
         && pass "convert_md.py（调上游 converter）" || fail "convert_md.py"
 else

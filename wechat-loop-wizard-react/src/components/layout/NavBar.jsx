@@ -6,11 +6,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
 const PAGE_TITLES = {
+  pool: "账号池",
   collect: "采集向导",
   tasks: "采集任务",
   library: "入库文章",
   settings: "设置与诊断",
 }
+
+// 「开始采集」按钮只在这两个页面出现
+const ACTION_BUTTON_PAGES = new Set(["collect", "tasks"])
 
 /**
  * 顶部导航栏 —— 接收 App Shell 传入的 current / onNavigate
@@ -65,14 +69,16 @@ export function NavBar({ current, onNavigate, navItems, className }) {
               aria-label="搜索文章"
             />
           </div>
-          <Button
-            type="button"
-            size="default"
-            onClick={() => onNavigate("collect")}
-            className="h-9 shrink-0 gap-2 active:scale-95 transition-transform"
-          >
-            开始采集
-          </Button>
+          {ACTION_BUTTON_PAGES.has(current) && (
+            <Button
+              type="button"
+              size="default"
+              onClick={() => onNavigate("collect")}
+              className="h-9 shrink-0 gap-2 active:scale-95 transition-transform"
+            >
+              开始采集
+            </Button>
+          )}
         </div>
       </div>
 

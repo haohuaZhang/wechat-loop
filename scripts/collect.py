@@ -35,6 +35,10 @@ from urllib.parse import urlparse, parse_qs
 import requests
 
 ROOT = Path(__file__).resolve().parent.parent
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from upstream import upstream_dir  # noqa: E402
+
 PROFILE_DIR = os.environ.get("CHROME_PROFILE", str(Path.home() / ".chrome-profile"))
 STATE_DIR = Path.home() / ".cache" / "chrome-devtools-mcp" / "chrome-profile"
 MP_BASE = "https://mp.weixin.qq.com"
@@ -47,6 +51,11 @@ CONTENT_RETRIES = 3
 CONTENT_BLOCKED_COOLDOWN = 60
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+# 微信读书通道：复用 wechat-mp-tools 后端（bridge.py）已登录的账号池
+WEREAD_API = os.environ.get("WECHAT_LOOP_API", "http://127.0.0.1:5200").rstrip("/")
+WEREAD_POLL_SEC = 2
+WEREAD_TASK_TIMEOUT = 3600
 
 
 # ── 异常 ──────────────────────────────────────────────────
@@ -87,7 +96,7 @@ def load_credentials() -> dict:
                 cred["cookie"] = v
 
     # 3. Playwright cookies.json（Phase 1.2 后自动生成）
-    cookie_file = ROOT / "../wechat-flow-film/cookies.json"
+    cookie_file = upstream_dir("wechat-flow-film") / "cookies.json"
     if cookie_file.exists():
         try:
             data = json.loads(cookie_file.read_text())
@@ -115,7 +124,7 @@ def load_credentials() -> dict:
             pass
 
     # 4. 上游 credentials.json（wechat-digest-skill 兼容）
-    upstream_cred = ROOT.parent / "wechat-digest-skill" / "credentials.json"
+    upstream_cred = upstream_dir("wechat-digest-skill") / "credentials.json"
     if upstream_cred.exists():
         try:
             data = json.loads(upstream_cred.read_text())
@@ -316,6 +325,136 @@ def collect_competitor(session, token, name: str, count: int, since: str = "") -
     return articles
 
 
+# ── 微信读书通道（推荐：不碰公众平台后台，规避 200013）──────────
+
+def weread_api(path: str, method: str = "GET", payload: dict | None = None) -> dict:
+    """调本地 wechat-mp-tools 后端（bridge.py，默认 5200）。"""
+    url = f"{WEREAD_API}{path}"
+    try:
+        if method == "POST":
+            resp = requests.post(url, json=payload or {}, timeout=30)
+        else:
+            resp = requests.get(url, timeout=30)
+    except requests.RequestException as e:
+        raise RuntimeError(
+            f"连不上本地后端 {WEREAD_API}（{e.__class__.__name__}）。\n"
+            f"     先另开终端运行: python3 backend/bridge.py\n"
+            f"     或在网页 http://localhost:5173/#/collect 扫码登录后再试"
+        ) from e
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("error") or resp.text
+        except ValueError:
+            detail = resp.text
+        raise RuntimeError(f"{path} 返回 HTTP {resp.status_code}: {detail}")
+    return resp.json()
+
+
+def search_account_weread(name: str) -> tuple[str, str]:
+    """公众号名称 → (fakeid, nickname)。"""
+    data = weread_api("/api/accounts/search", "POST", {"keyword": name})
+    results = data.get("results") or []
+    if not results:
+        raise RuntimeError(f"微信读书没搜到「{name}」，换个更完整的公众号名试试")
+    chosen = next((a for a in results if (a.get("nickname") or "").strip() == name.strip()), results[0])
+    return chosen.get("fakeid", ""), chosen.get("nickname") or name
+
+
+def _downloaded_text(entry: dict) -> str:
+    """从下载产物（目录里的 .md 或 index.html）取正文。"""
+    raw_path = entry.get("path") or ""
+    if not raw_path:
+        return ""
+    p = Path(raw_path)
+    if p.is_dir():
+        mds = sorted(p.glob("*.md"))
+        if mds:
+            return mds[0].read_text(encoding="utf-8", errors="replace")
+        index = p / "index.html"
+        if index.exists():
+            p = index
+        else:
+            return ""
+    if not p.is_file():
+        return ""
+    text = p.read_text(encoding="utf-8", errors="replace")
+    if p.suffix.lower() == ".md":
+        return text
+    try:
+        import trafilatura
+
+        return trafilatura.extract(text, include_comments=False, include_tables=False) or ""
+    except Exception:
+        return text
+
+
+def collect_competitor_weread(name: str, count: int, since: str = "") -> list[dict]:
+    """微信读书通道：搜索 → 一键采集最近 N 篇 → 从下载产物回填正文。"""
+    fakeid, nickname = search_account_weread(name)
+    print(f"   fakeid={fakeid} nickname={nickname}（微信读书通道）")
+
+    since_ts = 0
+    if since:
+        try:
+            since_ts = int(datetime.strptime(since, "%Y-%m-%d").timestamp())
+        except ValueError:
+            print(f"   ⚠️ --since 格式不对（{since}），忽略日期过滤")
+
+    started = time.time()
+    task = weread_api("/api/articles/collect-latest", "POST", {
+        "fakeid": fakeid,
+        "account_name": nickname,
+        "limit": count,
+        "skip_existing": True,
+    })
+    task_id = task.get("task_id")
+    if not task_id:
+        raise RuntimeError(f"后端没返回 task_id: {task}")
+    print(f"   {task.get('message', '任务已启动')}")
+
+    last_line = ""
+    while True:
+        if time.time() - started > WEREAD_TASK_TIMEOUT:
+            raise RuntimeError(f"采集超时（>{WEREAD_TASK_TIMEOUT}s），任务 {task_id} 可在网页里继续观察")
+        time.sleep(WEREAD_POLL_SEC)
+        prog = weread_api(f"/api/articles/download-progress/{task_id}")
+        line = (f"   {prog.get('completed', 0)}/{prog.get('total', 0)} 完成"
+                f"，失败 {prog.get('failed', 0)} | {prog.get('current', '')}")
+        if line != last_line:
+            print(line)
+            last_line = line
+        if prog.get("status") in ("completed", "failed", "cancelled"):
+            if prog.get("stop_reason"):
+                print(f"   停止原因: {prog['stop_reason']}")
+            break
+
+    history = weread_api("/api/articles/history?limit=1000").get("history") or []
+    picked = [
+        h for h in history
+        if h.get("success") and h.get("account") == nickname
+        and float(h.get("time") or 0) >= started - 5
+    ]
+    if since_ts:
+        picked = [h for h in picked if float(h.get("publish_time") or 0) >= since_ts]
+
+    articles: list[dict] = []
+    for h in picked[:count]:
+        content = _downloaded_text(h)
+        if not content.strip():
+            print(f"   ⚠️ 跳过无正文: {h.get('title', '')}")
+            continue
+        ts = int(h.get("publish_time") or 0)
+        articles.append({
+            "title": h.get("title", ""),
+            "url": h.get("link", ""),
+            "content": content,
+            "digest": h.get("digest", ""),
+            "thumb_url": h.get("cover_url", ""),
+            "publish_date": datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else "",
+        })
+    return articles
+
+
 # ── knowledge_base.json 读写 ───────────────────────────────────
 
 KB_PATH = ROOT / "loop" / "knowledge_base.json"
@@ -395,9 +534,11 @@ def merge_into_kb(kb: dict, account_key: str, account_name: str,
 
 def main():
     p = argparse.ArgumentParser(description="采集公众号文章进 knowledge_base.json")
-    p.add_argument("account", help="账号名: 'self' 走 material API；其它名称走 searchbiz")
+    p.add_argument("account", help="账号名: 'self' 走 material API；其它名称默认走微信读书搜索采集")
     p.add_argument("--count", type=int, default=20, help="采集数量（自己号=永久素材，竞品=列表数）")
     p.add_argument("--since", default="", help="竞品号截止日期 YYYY-MM-DD（只采集这天之后）")
+    p.add_argument("--channel", choices=["weread", "mp"], default="weread",
+                   help="竞品号采集通道: weread=微信读书账号池(默认，规避 200013)；mp=公众平台后台需 token+cookie")
     args = p.parse_args()
 
     cred = load_credentials()
@@ -451,7 +592,26 @@ def main():
         print(f"✅ 自己号: 新增 {added}/{len(articles)} 篇 → KB 共 {len(kb['articles'])} 篇")
 
     else:
-        # ── 竞品号：必须 token + cookie ──
+        account_key = re.sub(r"[^\w]", "_", account)[:20]
+
+        # ── 通道 A：微信读书账号池（默认，不碰公众平台后台）──
+        if args.channel == "weread":
+            print("通道: 微信读书账号池")
+            try:
+                articles = collect_competitor_weread(account, args.count, args.since)
+            except RuntimeError as e:
+                print(f"  ❌ {e}")
+                print("     已登录的微信读书账号可在 http://localhost:5173/#/collect 扫码添加")
+                print("     想改回公众平台后台采集: 加 --channel mp")
+                sys.exit(2)
+            if not articles:
+                print("  ⚠️ 没有采到新文章（可能全部已下载过，用网页端可看到历史）")
+            added = merge_into_kb(kb, account_key, account, articles)
+            save_kb(kb)
+            print(f"✅ 竞品号 {account}: 新增 {added}/{len(articles)} 篇 → KB 共 {len(kb['articles'])} 篇")
+            return
+
+        # ── 通道 B：公众平台后台（需要 token + cookie）──
         if not cred["token"] or not cred["cookie"]:
             print(f"  ❌ 竞品号「{account}」需要 token + cookie")
             sys.exit(1)
@@ -464,7 +624,6 @@ def main():
         except AuthError as e:
             print(f"  ❌ 凭证失效: {e} — 重新登录 mp.weixin.qq.com")
             sys.exit(2)
-        account_key = re.sub(r"[^\w]", "_", account)[:20]
         added = merge_into_kb(kb, account_key, account, articles)
         save_kb(kb)
         print(f"✅ 竞品号 {account}: 新增 {added}/{len(articles)} 篇 → KB 共 {len(kb['articles'])} 篇")

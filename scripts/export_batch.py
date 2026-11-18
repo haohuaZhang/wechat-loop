@@ -17,7 +17,10 @@ import sys
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKILL_DIR = os.path.join(ROOT, "wechat-digest-skill")
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from upstream import upstream_dir  # noqa: E402
+
+SKILL_DIR = str(upstream_dir("wechat-digest-skill"))
 DEFAULT_KB = os.path.join(SKILL_DIR, "output", "knowledge_base.json")
 
 sys.path.insert(0, SKILL_DIR)

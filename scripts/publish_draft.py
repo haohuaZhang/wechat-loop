@@ -19,8 +19,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # 上游只读依赖
-WECHAT_FLOW_TOOLKIT = ROOT.parent / "wechat-flow" / "toolkit"
-WECHAT_FLOW_FILM = ROOT.parent / "wechat-flow-film"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from upstream import upstream_dir  # noqa: E402
+
+WECHAT_FLOW_TOOLKIT = upstream_dir("wechat-flow") / "toolkit"
+WECHAT_FLOW_FILM = upstream_dir("wechat-flow-film")
 
 # ⚠️ 待实测 — 这些是常见模式，第一次跑通后用 Playwright Inspector 替换
 SELECTORS = {

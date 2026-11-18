@@ -29,7 +29,10 @@ import time
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKILL_DIR = os.path.join(ROOT, "wechat-digest-skill")
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from upstream import upstream_dir  # noqa: E402
+
+SKILL_DIR = str(upstream_dir("wechat-digest-skill"))
 KB_PATH = os.path.join(SKILL_DIR, "output", "knowledge_base.json")
 EXPORT = os.path.join(ROOT, "scripts", "export_batch.py")
 RENDER = os.path.join(ROOT, "scripts", "render_workbench.py")

@@ -30,7 +30,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKILL_DIR = os.path.join(ROOT, "wechat-digest-skill")
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+from upstream import upstream_dir  # noqa: E402
+
+SKILL_DIR = str(upstream_dir("wechat-digest-skill"))
 COLLECTOR = os.path.join(SKILL_DIR, "wechat_collector.py")
 ANALYZE = os.path.join(ROOT, "scripts", "local_analyze.py")
 EXPORT = os.path.join(ROOT, "scripts", "export_batch.py")
