@@ -59,7 +59,23 @@ function extractRelativeDir(rawPath, account) {
 }
 
 /**
- * 原版 buildArticleServeUrl —— 拼接 iframe src
+ * UTF-8 字符串 → base64url（纯 ASCII）
+ * @param {string} str
+ * @returns {string}
+ */
+function utf8ToB64Url(str) {
+  const bytes = new TextEncoder().encode(str)
+  let bin = ""
+  for (let i = 0; i < bytes.length; i += 1) bin += String.fromCharCode(bytes[i])
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+/**
+ * 拼接正文 URL
+ *
+ * 注意：URL 里绝不能出现中文（即使百分号编码）。实测浏览器对 path/query
+ * 中编码后的中文一律 400，而 curl 直连是 200。公众号下载目录基本都带
+ * 中文名，所以把绝对路径整体 base64url，交给 bridge 的 /api/article-html。
  * @param {{ path?: string, account?: string }} item
  * @returns {string}
  */
@@ -67,13 +83,22 @@ function buildArticleServeUrl(item) {
   const title = item?.title || "article"
   const relDir = extractRelativeDir(item?.path || "", item?.account || "")
   const parts = (relDir || title).split("/").filter(Boolean)
-  const folderName = parts[parts.length - 1] || title
-  const filename = `${folderName}.html`
-  const encodedDir = parts
-    .map((seg) => encodeURIComponent(seg))
-    .join("/")
-  const query = item?.path ? `?path=${encodeURIComponent(item.path)}` : ""
-  return `/api/articles/serve-file/${encodedDir}/${encodeURIComponent(filename)}${query}`
+  const target = item?.path || parts.join("/")
+  return `/api/article-html?p=${utf8ToB64Url(target)}`
+}
+
+/**
+ * 给正文 HTML 补上 charset 与 base，保证 srcDoc 渲染时资源可解析
+ * 下载下来的公众号正文图片都是远端绝对地址，base 取站点根即可
+ * @param {string} html
+ * @returns {string}
+ */
+function withBaseHref(html) {
+  const head = '<meta charset="utf-8"><base href="/">'
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head[^>]*>/i, (m) => m + head)
+  }
+  return `<!DOCTYPE html><html><head>${head}</head><body>${html}</body></html>`
 }
 
 function getLocalDateString(unixTs) {
@@ -244,6 +269,10 @@ export function HistoryPage() {
   // 选中文章
   const [activeIdx, setActiveIdx] = React.useState(-1)
 
+  // 正文 HTML（用 fetch 取回后经 srcDoc 渲染，避免 iframe 文档请求被 dev 代理拦截）
+  const [frameHtml, setFrameHtml] = React.useState("")
+  const [frameErr, setFrameErr] = React.useState("")
+
   // RSS 模态
   const [rssOpen, setRssOpen] = React.useState(false)
   const [settings, setSettings] = React.useState({})
@@ -314,6 +343,29 @@ export function HistoryPage() {
   const activeItem = activeIdx >= 0 && activeIdx < filteredItems.length
     ? filteredItems[activeIdx]
     : null
+
+  // 拉取正文 HTML → srcDoc
+  React.useEffect(() => {
+    let cancelled = false
+    setFrameHtml("")
+    setFrameErr("")
+    if (!activeItem || !activeItem.success) return
+    const url = buildArticleServeUrl(activeItem)
+    fetch(url, { headers: { Accept: "text/html" } })
+      .then(async (res) => {
+        const text = await res.text()
+        if (cancelled) return
+        if (!res.ok) {
+          setFrameErr(`加载正文失败（HTTP ${res.status}）`)
+          return
+        }
+        setFrameHtml(withBaseHref(text))
+      })
+      .catch((err) => {
+        if (!cancelled) setFrameErr(`加载正文失败：${err.message}`)
+      })
+    return () => { cancelled = true }
+  }, [activeItem, activeIdx])
 
   // ── 操作 ──
 
@@ -710,14 +762,22 @@ export function HistoryPage() {
                   </div>
                 </div>
 
-                {/* iframe */}
-                <iframe
-                  ref={iframeRef}
-                  key={activeIdx + "-" + (activeItem.path || "")}
-                  src={buildArticleServeUrl(activeItem)}
-                  className="h-0 w-full flex-1 border-0 bg-white"
-                  title={activeItem.title || "文章正文"}
-                />
+                {/* iframe（srcDoc 渲染） */}
+                {frameErr ? (
+                  <div className="flex flex-1 items-center justify-center bg-surface">
+                    <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                      {frameErr}
+                    </div>
+                  </div>
+                ) : (
+                  <iframe
+                    ref={iframeRef}
+                    key={activeIdx + "-" + (activeItem.path || "")}
+                    srcDoc={frameHtml}
+                    className="h-0 w-full flex-1 border-0 bg-white"
+                    title={activeItem.title || "文章正文"}
+                  />
+                )}
               </div>
             )}
           </section>

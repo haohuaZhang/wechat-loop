@@ -159,6 +159,63 @@ def create_knowledge_base():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/article-html", methods=["GET"])
+def article_html():
+    """按 base64url 路径返回已下载文章的 HTML 正文。
+
+    为什么不用上游的 /api/articles/serve-file：实测浏览器对 URL 路径里
+    百分号编码的中文（%E6%B5%8B…）一律返回 400，而 curl 直连是 200。
+    公众号下载目录基本都带中文名，所以这里把路径整体 base64url，URL 里
+    只剩下 ASCII。
+    """
+    import base64
+    from pathlib import Path
+    from flask import Response, jsonify, request
+
+    p = request.args.get("p", "")
+    if not p:
+        return jsonify({"error": "缺少 p 参数"}), 400
+    try:
+        raw = base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)).decode("utf-8")
+    except Exception:
+        return jsonify({"error": "p 不是合法的 base64url"}), 400
+
+    from backend.config import OUTPUT_DIR, get_settings
+
+    out_root = Path(OUTPUT_DIR).resolve()
+    dl_root = Path(str(get_settings().get("download_dir") or OUTPUT_DIR)).resolve()
+
+    target = Path(raw)
+    try:
+        target = target.resolve()
+    except Exception:
+        pass
+
+    def _inside(path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    if not (_inside(target, out_root) or _inside(target, dl_root)):
+        return jsonify({"error": "路径不在下载目录内"}), 403
+
+    if target.is_dir():
+        htmls = sorted(target.glob("*.html"))
+        if not htmls:
+            return jsonify({"error": "目录下没有 html 正文"}), 404
+        target = htmls[0]
+
+    if not target.is_file():
+        return jsonify({"error": "文件不存在"}), 404
+
+    return Response(
+        target.read_text(encoding="utf-8", errors="ignore"),
+        mimetype="text/html",
+    )
+
+
 if __name__ == "__main__":
     # 复用 wechat-mp-tools 的端口，5200
     import os
