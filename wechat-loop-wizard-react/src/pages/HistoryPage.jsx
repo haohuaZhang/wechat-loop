@@ -22,6 +22,7 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Bug,
 } from "lucide-react"
 
 /**
@@ -100,6 +101,86 @@ function withBaseHref(html) {
     return html.replace(/<head[^>]*>/i, (m) => m + head)
   }
   return `<!DOCTYPE html><html><head>${head}</head><body>${html}</body></html>`
+}
+
+const WEIXIN_IMG_HOST_SUFFIX = ["qpic.cn", "qlogo.cn", "gtimg.com", "wx.qq.com"]
+
+/**
+ * 图片诊断面板 —— 把后端 inspect 的结果翻译成人话
+ * @param {{diag: object, onClose: () => void}} props
+ */
+function DiagPanel({ diag, onClose }) {
+  if (diag?.loading) {
+    return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">正在检查正文里的图片…</div>
+  }
+  if (diag?.error) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-surface p-6">
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          诊断失败：{diag.error}
+        </div>
+        <Button variant="outline" size="sm" onClick={onClose}>关闭</Button>
+      </div>
+    )
+  }
+
+  const d = diag?.data || {}
+  const hosts = d.img_hosts || {}
+  const otherHosts = Object.keys(hosts).filter(
+    (h) => h !== "<相对路径>" && !WEIXIN_IMG_HOST_SUFFIX.some((s) => h.endsWith(s)),
+  )
+  const verdicts = []
+  if (d.img_tags === 0) {
+    verdicts.push(["error", "正文里没有任何 img 标签：图片在下载环节就没保存下来，不是代理问题。"])
+  }
+  if (d.img_urls_relative > 0) {
+    verdicts.push(["warn", `有 ${d.img_urls_relative} 张是相对路径图片：需要后端重启到最新版才支持。`])
+  }
+  if (otherHosts.length) {
+    verdicts.push(["warn", `以下域名不在代理白名单，需加白：${otherHosts.join("、")}`])
+  }
+  if (!verdicts.length) {
+    verdicts.push(["ok", "图片地址都在白名单内。若仍有空白，多半是原图本身失效（微信侧已删）。"])
+  }
+
+  const tone = { error: "border-destructive/40 bg-destructive/5 text-destructive", warn: "border-amber-400/50 bg-amber-50 text-amber-800", ok: "border-emerald-400/50 bg-emerald-50 text-emerald-800" }
+
+  return (
+    <div className="flex-1 overflow-auto bg-surface p-4">
+      <div className="space-y-2">
+        {verdicts.map(([level, text]) => (
+          <div key={text} className={cn("rounded-md border px-3 py-2 text-sm", tone[level])}>{text}</div>
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+        {[
+          ["img 标签", d.img_tags],
+          ["远端地址", d.img_urls_remote],
+          ["相对路径", d.img_urls_relative],
+          ["文件大小", `${d.bytes || 0} B`],
+        ].map(([k, v]) => (
+          <div key={k} className="rounded border border-border bg-background px-2 py-1.5">
+            <div className="text-muted-foreground">{k}</div>
+            <div className="font-mono text-sm">{String(v)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4">
+        <div className="mb-1 text-xs font-medium text-muted-foreground">图片域名分布</div>
+        <pre className="max-h-40 overflow-auto rounded border border-border bg-background p-2 font-mono text-[11px]">
+{JSON.stringify(hosts, null, 2)}
+        </pre>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button variant="outline" size="sm" onClick={onClose}>返回正文</Button>
+      </div>
+    </div>
+  )
+}
+
+DiagPanel.propTypes = {
+  diag: PropTypes.object,
+  onClose: PropTypes.func.isRequired,
 }
 
 function getLocalDateString(unixTs) {
@@ -284,6 +365,7 @@ export function HistoryPage() {
   // 正文 HTML（用 fetch 取回后经 srcDoc 渲染，避免 iframe 文档请求被 dev 代理拦截）
   const [frameHtml, setFrameHtml] = React.useState("")
   const [frameErr, setFrameErr] = React.useState("")
+  const [diag, setDiag] = React.useState(null)
 
   // RSS 模态
   const [rssOpen, setRssOpen] = React.useState(false)
@@ -361,6 +443,7 @@ export function HistoryPage() {
     let cancelled = false
     setFrameHtml("")
     setFrameErr("")
+    setDiag(null)
     if (!activeItem || !activeItem.success) return
     const url = buildArticleServeUrl(activeItem)
     fetch(url, { headers: { Accept: "text/html" } })
@@ -380,6 +463,18 @@ export function HistoryPage() {
   }, [activeItem, activeIdx])
 
   // ── 操作 ──
+
+  async function handleDiagnose(item) {
+    setDiag({ loading: true })
+    try {
+      const res = await fetch(`${buildArticleServeUrl(item)}&inspect=1`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
+      setDiag({ data })
+    } catch (err) {
+      setDiag({ error: err?.message || "未知错误" })
+    }
+  }
 
   async function handleDeleteOne(item) {
     const ok = await doubleConfirm({
@@ -765,6 +860,9 @@ export function HistoryPage() {
                     <Button type="button" variant="outline" size="sm" onClick={() => handleOpenFile(activeItem, "pdf")} className="gap-1">
                       <FileSpreadsheet className="h-3 w-3" /> PDF
                     </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleDiagnose(activeItem)} className="gap-1">
+                      <Bug className="h-3 w-3" /> 图片诊断
+                    </Button>
                     <Button type="button" variant="outline" size="sm" onClick={() => handleOpenParent(activeItem)} className="gap-1">
                       <FolderOpen className="h-3 w-3" /> 文件夹
                     </Button>
@@ -775,7 +873,9 @@ export function HistoryPage() {
                 </div>
 
                 {/* iframe（srcDoc 渲染） */}
-                {frameErr ? (
+                {diag ? (
+                  <DiagPanel diag={diag} onClose={() => setDiag(null)} />
+                ) : frameErr ? (
                   <div className="flex flex-1 items-center justify-center bg-surface">
                     <div className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                       {frameErr}
