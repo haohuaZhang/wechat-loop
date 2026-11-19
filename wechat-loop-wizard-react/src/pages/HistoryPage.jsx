@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/common/EmptyState"
+import { proxiedImage } from "@/lib/media"
 import { Badge } from "@/components/ui/badge"
 import {
   FolderOpen,
@@ -187,6 +188,17 @@ const IFRAME_INJECT_SCRIPT = `
       .lightbox-overlay.active .lightbox-img { transform: scale(1); }
     \`
     doc.head.appendChild(style)
+
+    // 兜底：把懒加载图（data-src）真的加载出来，并清掉 opacity:0 的隐藏样式
+    try {
+      doc.querySelectorAll('img').forEach(function(img) {
+        var ds = img.getAttribute('data-src')
+        if (ds && img.getAttribute('src') !== ds) img.setAttribute('src', ds)
+        if (!img.getAttribute('src')) img.style.display = 'none'
+        img.style.opacity = '1'
+        img.style.visibility = 'visible'
+      })
+    } catch (e) {}
 
     // 图片灯箱
     doc.body.addEventListener('click', function(e) {
@@ -682,7 +694,7 @@ export function HistoryPage() {
                           </div>
                           {coverSrc && (
                             <img
-                              src={coverSrc}
+                              src={proxiedImage(coverSrc)}
                               alt=""
                               loading="lazy"
                               onError={(e) => { e.currentTarget.style.display = "none" }}

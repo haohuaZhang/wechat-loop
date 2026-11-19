@@ -6,6 +6,7 @@ import { api } from "@/api/client"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { proxiedImage } from "@/lib/media"
 
 // ── 状态映射（严格对齐原版 login.js） ──────────────────────────
 const STATUS_LABEL = {
@@ -75,7 +76,7 @@ function AccountCard({ acc, busy, onRefresh, onVerify, onRescan, onRemove }) {
       {/* 头像 + 昵称 */}
       <div className="mb-4 flex items-center gap-3">
         {acc.avatar ? (
-          <img src={acc.avatar} alt="" className="h-11 w-11 rounded-full border-2 border-white object-cover shadow-sm"
+          <img src={proxiedImage(acc.avatar)} alt="" className="h-11 w-11 rounded-full border-2 border-white object-cover shadow-sm"
             onError={(e) => { e.currentTarget.style.display = "none" }} />
         ) : null}
         <div

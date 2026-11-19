@@ -215,9 +215,155 @@ def article_html():
         return jsonify({"error": "文件不存在"}), 404
 
     return Response(
-        target.read_text(encoding="utf-8", errors="ignore"),
+        _rewrite_media_urls(target.read_text(encoding="utf-8", errors="ignore")),
         mimetype="text/html",
     )
+
+
+# ---- 图片代理 ----
+# 公众号图片（mmbiz.qpic.cn）有防盗链：Referer 不是 mp.weixin.qq.com 时，
+# 微信会返回「此图片来自微信公众平台 未经允许不可引用」的占位图。
+# 正文里的图片还普遍是 <img data-src="..."> 懒加载，没有 JS 就永远不加载。
+# 这里统一改写成走本机代理，由后端带上 Referer 去取。
+IMG_CACHE_DIR = LOOP_ROOT / "loop" / ".imgcache"
+IMG_ALLOW_HOSTS = (
+    ".qpic.cn",
+    ".qlogo.cn",
+    ".wx.qq.com",
+    ".weixin.qq.com",
+    ".gtimg.com",
+    ".qq.com",
+)
+
+
+def _b64url(raw: str) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _proxy_url(url: str) -> str:
+    return "/api/image-proxy?u=" + _b64url(url)
+
+
+def _host_allowed(host: str) -> bool:
+    host = (host or "").lower()
+    return any(host == h.lstrip(".") or host.endswith(h) for h in IMG_ALLOW_HOSTS)
+
+
+def _rewrite_media_urls(html: str) -> str:
+    """把正文里的微信图片地址改写成 /api/image-proxy，并补上 src 让懒加载图显形"""
+    import re
+
+    def proxy_if_allowed(url: str) -> str:
+        from urllib.parse import urlparse
+
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return url
+        if parsed.scheme not in ("http", "https") or not _host_allowed(parsed.hostname or ""):
+            return url
+        return _proxy_url(url)
+
+    def fix_img(match: "re.Match") -> str:
+        tag = match.group(0)
+        lazy = re.search(r'data-src\s*=\s*"([^"]+)"', tag)
+        src = re.search(r'\ssrc\s*=\s*"([^"]*)"', tag)
+        source = (lazy.group(1) if lazy else "") or (src.group(1) if src else "")
+        proxied = proxy_if_allowed(source)
+        if proxied == source:
+            return tag
+        if lazy:
+            tag = tag.replace(lazy.group(0), f'data-src="{proxied}"')
+        if src:
+            tag = tag.replace(src.group(0), f' src="{proxied}"', 1)
+        else:
+            tag = tag[:-1] + f' src="{proxied}">' if tag.endswith(">") else tag
+        # 懒加载图常见 class 是 opacity:0，直接抹掉让图可见
+        tag = re.sub(r'style="[^"]*(?:opacity\s*:\s*0|visibility\s*:\s*hidden)[^"]*"', "", tag)
+        return tag
+
+    html = re.sub(r"<img\b[^>]*>", fix_img, html, flags=re.IGNORECASE)
+    # video / source / 背景图里的直链同样走代理
+    html = re.sub(
+        r'(src|data-src|poster)\s*=\s*"(https?://[^"]+)"',
+        lambda m: f'{m.group(1)}="{proxy_if_allowed(m.group(2))}"',
+        html,
+        flags=re.IGNORECASE,
+    )
+    html = re.sub(
+        r"background-image\s*:\s*url\(['\"]?(https?://[^)'\"]+)['\"]?\)",
+        lambda m: f"background-image:url('{proxy_if_allowed(m.group(1))}')",
+        html,
+        flags=re.IGNORECASE,
+    )
+    return html
+
+
+@app.route("/api/image-proxy", methods=["GET"])
+def image_proxy():
+    """带 Referer 拉取微信图片，并在本地落盘缓存"""
+    import base64
+    import hashlib
+    import mimetypes
+    import urllib.request
+    from urllib.parse import urlparse
+
+    from flask import Response, jsonify, request
+
+    u = request.args.get("u", "")
+    if not u:
+        return jsonify({"error": "缺少 u 参数"}), 400
+    try:
+        url = base64.b64decode(u + "=" * (-len(u) % 4), altchars=b"-_", validate=True).decode("utf-8")
+    except Exception:
+        return jsonify({"error": "u 不是合法的 base64url"}), 400
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not _host_allowed(parsed.hostname or ""):
+        return jsonify({"error": "只代理微信图片域名"}), 403
+
+    key = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    IMG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    ext = ".img"
+
+    # 命中缓存直接回
+    for cached in IMG_CACHE_DIR.glob(f"{key}.*"):
+        ext = cached.suffix
+        return Response(
+            cached.read_bytes(),
+            mimetype=mimetypes.guess_type(f"x{ext}")[0] or "image/jpeg",
+            headers={"Cache-Control": "public, max-age=604800"},
+        )
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Referer": "https://mp.weixin.qq.com/",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/122.0 Safari/537.36"
+            ),
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = resp.read()
+            ctype = resp.headers.get("Content-Type", "").split(";")[0].strip()
+    except Exception as exc:  # 网络问题 / 图片已删
+        return jsonify({"error": f"图片拉取失败：{exc}"}), 502
+
+    if not ctype.startswith("image/"):
+        ctype = mimetypes.guess_type(parsed.path)[0] or "image/jpeg"
+    ext = mimetypes.guess_extension(ctype.split("/")[-1]) or ".jpg"
+    try:
+        (IMG_CACHE_DIR / f"{key}{ext}").write_bytes(data)
+    except Exception:
+        pass  # 缓存失败不影响返回
+
+    return Response(data, mimetype=ctype, headers={"Cache-Control": "public, max-age=604800"})
 
 
 if __name__ == "__main__":

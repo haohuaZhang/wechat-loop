@@ -7,6 +7,7 @@ import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { proxiedImage } from "@/lib/media"
 
 /**
  * ArticlesPage —— 文章下载（严格对齐 wechat-mp-tools/frontend/js/components/articles.js v1 817 行）
@@ -979,7 +980,7 @@ export function ArticlesPage() {
                       {/* 左侧封面图 */}
                       {coverSrc && (
                         <img
-                          src={coverSrc}
+                          src={proxiedImage(coverSrc)}
                           alt=""
                           loading="lazy"
                           onError={(e) => {

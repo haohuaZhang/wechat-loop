@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/common/EmptyState"
 import { api } from "@/api/client"
 import { cn } from "@/lib/utils"
+import { proxiedImage } from "@/lib/media"
 
 /**
  * 公众号管理页 —— 搜索 / 从微信读书同步 / 收藏 / RSS 订阅
@@ -717,7 +718,7 @@ RssDialog.propTypes = {
  */
 function Avatar({ acc }) {
   if (acc.avatar) {
-    return <img src={acc.avatar} alt="" className="h-10 w-10 shrink-0 rounded-full border border-border object-cover" />
+    return <img src={proxiedImage(acc.avatar)} alt="" className="h-10 w-10 shrink-0 rounded-full border border-border object-cover" />
   }
   return (
     <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#12372e] font-serif text-sm font-bold text-white">
