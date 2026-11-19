@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/common/EmptyState"
 import {
-  Search, X, Download, FileText, ExternalLink, RefreshCw, Loader2, Tag, FolderTree,
+  Search, X, Download, FileText, ExternalLink, RefreshCw, Loader2, Tag, FolderTree, Plus, Database,
 } from "lucide-react"
 
 /**
@@ -90,6 +90,7 @@ export function LibraryPage() {
   const [sort, setSort] = React.useState("date")
 
   const [loading, setLoading] = React.useState(true)
+  const [loadingMore, setLoadingMore] = React.useState(false)
   const [error, setError] = React.useState("")
   const [data, setData] = React.useState({ total: 0, items: [], accounts: [], topics: [] })
 
@@ -97,17 +98,36 @@ export function LibraryPage() {
   const [detail, setDetail] = React.useState(null)
   const [detailLoading, setDetailLoading] = React.useState(false)
 
+  // 知识库列表 / 切换 / 新建
+  const [kbs, setKbs] = React.useState([])
+  const [creating, setCreating] = React.useState(false)
+  const [newName, setNewName] = React.useState("")
+  const [newPath, setNewPath] = React.useState("")
+  const [saving, setSaving] = React.useState(false)
+
+  const PAGE_SIZE = 50
+
   // 搜索框 debounce 300ms
   React.useEffect(() => {
     const t = setTimeout(() => setKeyword(query.trim()), 300)
     return () => clearTimeout(t)
   }, [query])
 
+  const loadKbs = React.useCallback(async () => {
+    try {
+      setKbs(await api.kbList())
+    } catch {
+      // 知识库列表失败不阻塞检索
+    }
+  }, [])
+
+  React.useEffect(() => { loadKbs() }, [loadKbs])
+
   const load = React.useCallback(async () => {
     setLoading(true)
     setError("")
     try {
-      const res = await api.kbArticles({ q: keyword, account, tag, sort, limit: 200 })
+      const res = await api.kbArticles({ q: keyword, account, tag, sort, limit: PAGE_SIZE })
       setData(res)
     } catch (err) {
       setError(err?.message || "读取知识库失败")
@@ -118,6 +138,61 @@ export function LibraryPage() {
   }, [keyword, account, tag, sort])
 
   React.useEffect(() => { load() }, [load])
+
+  const loadMore = async () => {
+    setLoadingMore(true)
+    try {
+      const res = await api.kbArticles({
+        q: keyword, account, tag, sort, limit: PAGE_SIZE, offset: data.items.length,
+      })
+      setData((prev) => ({ ...res, items: [...prev.items, ...(res.items || [])] }))
+    } catch (err) {
+      setError(err?.message || "加载更多失败")
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const switchKb = async (id) => {
+    if (!id || kbs.find((k) => k.id === id && k.isActive)) return
+    setLoading(true)
+    setError("")
+    try {
+      await api.kbSetActive(id)
+      setActiveId("")
+      await loadKbs()
+      await load()
+    } catch (err) {
+      setError(err?.message || "切换知识库失败")
+      setLoading(false)
+    }
+  }
+
+  const openCreate = () => {
+    setNewName("")
+    setNewPath("")
+    setCreating(true)
+  }
+
+  const submitCreate = async () => {
+    const name = newName.trim()
+    if (!name) { setError("请填写知识库名称"); return }
+    // 路径自动生成：ASCII 名称直接用作文件名，中文名用时间戳
+    const slug = /^[A-Za-z0-9_-]+$/.test(name) ? name.toLowerCase() : `kb_${Date.now().toString(36)}`
+    const path = (newPath.trim() || `loop/kb/${slug}.json`)
+    setSaving(true)
+    setError("")
+    try {
+      const created = await api.kbCreate({ name, path })
+      setCreating(false)
+      await loadKbs()
+      if (created?.id) await switchKb(created.id)
+    } catch (err) {
+      setError(err?.message || "新建知识库失败")
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // 选中文章 → 拉正文
   React.useEffect(() => {
@@ -148,7 +223,32 @@ export function LibraryPage() {
             知识库里共有 <span className="font-medium text-foreground">{data.total}</span> 篇匹配文章，可检索、按公众号/标签筛选、导出。
           </p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="mr-1 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1">
+            <Database className="h-3.5 w-3.5 text-muted-foreground" />
+            <select
+              value={kbs.find((k) => k.isActive)?.id || ""}
+              onChange={(e) => switchKb(e.target.value)}
+              className="max-w-[180px] bg-transparent text-xs outline-none"
+              aria-label="切换知识库"
+            >
+              {kbs.length === 0 && <option value="">加载中…</option>}
+              {kbs.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.name}（{k.articleCount}）
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="rounded-sm p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+              aria-label="新建知识库"
+              title="新建知识库"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <Button variant="outline" size="sm" onClick={() => window.open(api.kbExportUrl("md", filters), "_blank")} className="gap-1">
             <Download className="h-3 w-3" /> 导出 MD
           </Button>
@@ -258,6 +358,20 @@ export function LibraryPage() {
                 </div>
               </button>
             ))}
+            {!loading && !error && data.items.length > 0 && data.items.length < data.total && (
+              <div className="border-t border-border p-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-1"
+                  disabled={loadingMore}
+                  onClick={loadMore}
+                >
+                  {loadingMore && <Loader2 className="h-3 w-3 animate-spin" />}
+                  加载更多（已显示 {data.items.length}/{data.total}）
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -318,6 +432,53 @@ export function LibraryPage() {
           )}
         </div>
       </div>
+
+      {creating && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          onClick={() => setCreating(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-md border border-border bg-card p-5 shadow-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="新建知识库"
+          >
+            <h3 className="font-serif text-lg font-semibold">新建知识库</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              会创建在 loop/kb/ 下，创建后自动切换过去。
+            </p>
+            <label htmlFor="kb-name" className="mt-4 block text-[13px] font-medium">名称</label>
+            <Input
+              id="kb-name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="例如：游戏赛道"
+              className="mt-1 h-9"
+              onKeyDown={(e) => { if (e.key === "Enter") submitCreate() }}
+            />
+            <label htmlFor="kb-path" className="mt-3 block text-[13px] font-medium">
+              文件路径 <span className="font-normal text-muted-foreground">（可选）</span>
+            </label>
+            <Input
+              id="kb-path"
+              value={newPath}
+              onChange={(e) => setNewPath(e.target.value)}
+              placeholder="留空自动生成 loop/kb/xxx.json"
+              className="mt-1 h-9 font-mono text-xs"
+            />
+            {error && <p className="mt-2 text-[12px] text-destructive">{error}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCreating(false)} disabled={saving}>取消</Button>
+              <Button size="sm" onClick={submitCreate} disabled={saving} className="gap-1">
+                {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+                创建
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

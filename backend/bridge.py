@@ -71,6 +71,20 @@ def _save_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _kb_count(path: Path) -> int:
+    """统计知识库文章数：兼容 list 与 {articles: ...} 两种结构"""
+    try:
+        data = _load_json(path, None)
+    except Exception:
+        return 0
+    if isinstance(data, dict):
+        articles = data.get("articles")
+        return len(articles) if isinstance(articles, (list, dict)) else 0
+    if isinstance(data, list):
+        return len(data)
+    return 0
+
+
 def _discover_kbs() -> list[dict]:
     """扫描 loop/ 目录下所有知识库文件"""
     _ensure_dirs()
@@ -78,7 +92,7 @@ def _discover_kbs() -> list[dict]:
     kbs = []
 
     # 主知识库
-    main_count = len(_load_json(MAIN_KB, [])) if MAIN_KB.exists() else 0
+    main_count = _kb_count(MAIN_KB)
     kbs.append({
         "id": "default",
         "name": "主知识库",
@@ -91,10 +105,12 @@ def _discover_kbs() -> list[dict]:
     kb_sub_dir = KB_DIR / "kb"
     for f in sorted(kb_sub_dir.glob("*.json")):
         kb_id = f.stem
-        count = len(_load_json(f, []))
+        count = _kb_count(f)
+        raw = _load_json(f, {})
+        display = raw.get("name") if isinstance(raw, dict) else None
         kbs.append({
             "id": kb_id,
-            "name": kb_id,  # 用户自定义名称
+            "name": display or kb_id,
             "path": f"loop/kb/{f.name}",
             "isActive": active_id == kb_id,
             "articleCount": count,
@@ -159,7 +175,7 @@ def create_knowledge_base():
             return jsonify({"error": f"知识库文件已存在：{path_str}"}), 409
 
         full_path.parent.mkdir(parents=True, exist_ok=True)
-        _save_json(full_path, [])
+        _save_json(full_path, {"version": 1, "name": name, "articles": {}})
 
         kb_id = full_path.stem
         return jsonify({

@@ -379,6 +379,58 @@ export const api = {
   },
 
   /**
+   * 知识库列表
+   * GET /api/kb → [{id, name, path, isActive, articleCount}]
+   */
+  async kbList() {
+    if (USE_MOCK) return MOCK_KB_LIST.map((k) => ({
+      id: k.id, name: k.name, path: k.path, isActive: k.isActive, articleCount: k.articleCount,
+    }))
+    try {
+      const res = await fetchJSON("/api/kb")
+      const list = Array.isArray(res) ? res : (res?.items || [])
+      return list.map((k) => ({
+        id: k.id,
+        name: k.name || k.id,
+        path: k.path || "",
+        isActive: !!k.isActive,
+        articleCount: Number(k.articleCount) || 0,
+      }))
+    } catch (err) {
+      throw toError(err, "读取知识库列表失败")
+    }
+  },
+
+  /**
+   * 新建知识库
+   * POST /api/kb  body: { name, path }
+   */
+  async kbCreate({ name, path }) {
+    if (!name) throw new Error("缺少知识库名称")
+    if (!path) throw new Error("缺少知识库路径")
+    if (USE_MOCK) return { id: path.split("/").pop().replace(/\.json$/, ""), name, path }
+    try {
+      return await fetchJSON("/api/kb", { method: "POST", body: JSON.stringify({ name, path }) })
+    } catch (err) {
+      throw toError(err, "新建知识库失败")
+    }
+  },
+
+  /**
+   * 切换活动知识库
+   * POST /api/kb/active  body: { id }
+   */
+  async kbSetActive(id) {
+    if (!id) throw new Error("缺少知识库 id")
+    if (USE_MOCK) return { ok: true, active: id }
+    try {
+      return await fetchJSON("/api/kb/active", { method: "POST", body: JSON.stringify({ id }) })
+    } catch (err) {
+      throw toError(err, "切换知识库失败")
+    }
+  },
+
+  /**
    * 检索知识库
    * @param {{q?: string, account?: string, tag?: string, sort?: string, limit?: number, offset?: number}} params
    */
