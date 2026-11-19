@@ -267,7 +267,7 @@ export function ArticlesPage() {
     setToast(msg)
   }
 
-  // ── 初始化：加载公众号列表 ──
+  // ── 初始化：加载公众号列表（并处理跳转预选） ──
   React.useEffect(() => {
     loadAccounts()
   }, [])
@@ -277,7 +277,16 @@ export function ArticlesPage() {
     setAccountsError("")
     try {
       const res = await api.listFavorites()
-      setAccounts(res?.accounts || [])
+      const list = res?.accounts || []
+      setAccounts(list)
+
+      // 从「公众号管理」页跳转时 URL 里带着 fakeid，列表就绪后直接选中
+      const params = new URLSearchParams(window.location.hash.split("?")[1] || "")
+      const preFakeid = params.get("fakeid") || ""
+      const preName = params.get("name") || ""
+      if (preFakeid && list.some((a) => a.fakeid === preFakeid)) {
+        handleSelectAccount(preFakeid, preName || list.find((a) => a.fakeid === preFakeid)?.nickname || "")
+      }
     } catch (err) {
       setAccountsError(err?.message || "加载公众号列表失败")
     } finally {
@@ -341,7 +350,7 @@ export function ArticlesPage() {
   }
 
   // ── 加载文章列表（含缓存逻辑） ──
-  async function loadArticles(nextPage = page, force = false) {
+  async function loadArticles(nextPage = page, force = false, fakeidOverride = "") {
     setArticlesError("")
     setErrorKind("")
 
@@ -359,7 +368,10 @@ export function ArticlesPage() {
     setArticlesLoading(true)
     try {
       const begin = nextPage * PAGE_SIZE
-      const raw = await api.fetchArticlesList(activeFakeid, {
+      // fakeid 必须显式传：setActiveFakeid 之后立刻调用时 state 还没更新，
+      // 从闭包读会拿到空串，后端直接报「缺少 fakeid」
+      const fid = fakeidOverride || activeFakeid
+      const raw = await api.fetchArticlesList(fid, {
         begin,
         count: PAGE_SIZE,
         keyword,
@@ -417,7 +429,7 @@ export function ArticlesPage() {
     // 搜索框也清空
     if (searchInputRef.current) searchInputRef.current.value = ""
 
-    loadArticles(0, true)
+    loadArticles(0, true, fakeid)
   }
 
   // ── 搜索 / 清除 ──

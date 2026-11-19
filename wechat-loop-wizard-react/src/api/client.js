@@ -711,6 +711,82 @@ export const api = {
   },
 
   /**
+   * 从微信读书书架同步「已关注公众号」候选列表
+   * GET /api/accounts/user-mps?force=0|1
+   * 返回 { mps: [{fakeid, bookId, nickname, avatar, signature}], total, cached,
+   *        throttled?, cooldown_left?, need_verify?, error? }
+   */
+  async listUserMps({ force = false } = {}) {
+    if (USE_MOCK) {
+      await delay(300)
+      return { mps: [], total: 0, cached: false }
+    }
+    try {
+      const res = await fetchJSON(`/api/accounts/user-mps${force ? "?force=1" : ""}`)
+      const mps = (res?.mps || []).map(normalizeAccount)
+      return {
+        mps,
+        total: Number(res?.total) || mps.length,
+        cached: !!res?.cached,
+        throttled: !!res?.throttled,
+        cooldownLeft: Number(res?.cooldown_left) || 0,
+        needVerify: !!res?.need_verify,
+        error: res?.error || "",
+      }
+    } catch (err) {
+      throw toError(err, "从微信读书同步失败")
+    }
+  },
+
+  /**
+   * RSS 订阅状态
+   * GET /api/accounts/rss-subscriptions
+   * 返回 { subscriptions: [{fakeid, enabled, interval_minutes, last_fetch_time, ...}] }
+   */
+  async rssSubscriptions() {
+    if (USE_MOCK) return { subscriptions: [] }
+    try {
+      const res = await fetchJSON("/api/accounts/rss-subscriptions")
+      return { subscriptions: res?.subscriptions || [] }
+    } catch (err) {
+      throw toError(err, "读取 RSS 订阅失败")
+    }
+  },
+
+  /**
+   * 开启 / 更新 RSS 自动抓取
+   * POST /api/accounts/<fakeid>/rss-subscribe  body: { interval_minutes }
+   */
+  async rssSubscribe(fakeid, intervalMinutes = 60) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) return { ok: true }
+    try {
+      const res = await fetchJSON(`/api/accounts/${encodeURIComponent(fakeid)}/rss-subscribe`, {
+        method: "POST",
+        body: JSON.stringify({ interval_minutes: intervalMinutes }),
+      })
+      return { ok: true, subscription: res?.subscription, message: res?.message || "已启用 RSS 自动抓取" }
+    } catch (err) {
+      throw toError(err, "开启 RSS 失败")
+    }
+  },
+
+  /**
+   * 关闭 RSS 自动抓取
+   * DELETE /api/accounts/<fakeid>/rss-subscribe
+   */
+  async rssUnsubscribe(fakeid) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) return { ok: true }
+    try {
+      await fetchJSON(`/api/accounts/${encodeURIComponent(fakeid)}/rss-subscribe`, { method: "DELETE" })
+      return { ok: true }
+    } catch (err) {
+      throw toError(err, "关闭 RSS 失败")
+    }
+  },
+
+  /**
    * 搜索公众号（按关键字 / 文章链接 / biz）
    * POST /api/accounts/search  body: { keyword }
    * 返回 { results: [{fakeid, bookId, nickname, avatar, signature}] }
