@@ -1004,7 +1004,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ interval_minutes: intervalMinutes }),
       })
-      return { ok: true, subscription: res?.subscription, message: res?.message || "已启用 RSS 自动抓取" }
+      return { ok: true, subscription: res?.subscription, message: res?.message || "已启用 RSS 自动抓取", immediate_fetch: res?.immediate_fetch }
     } catch (err) {
       throw toError(err, "开启 RSS 失败")
     }
@@ -1022,6 +1022,38 @@ export const api = {
       return { ok: true }
     } catch (err) {
       throw toError(err, "关闭 RSS 失败")
+    }
+  },
+
+  /**
+   * 立即上传该号所有待上传文章到 RSS 网关
+   * POST /api/accounts/<fakeid>/rss-force-upload
+   * 返回 { success, succeeded, failed, quarantined, error }
+   */
+  async rssForceUpload(fakeid) {
+    if (!fakeid) throw new Error("缺少 fakeid")
+    if (USE_MOCK) return { success: true, succeeded: 0 }
+    try {
+      return await fetchJSON(`/api/accounts/${encodeURIComponent(fakeid)}/rss-force-upload`, { method: "POST" })
+    } catch (err) {
+      throw toError(err, "上传历史文章失败")
+    }
+  },
+
+  /**
+   * RSS 上传日志
+   * GET /api/accounts/rss-upload-log?account=&limit=
+   * 返回 { logs: [{time, trigger, success, succeeded, failed, quarantined, error}] }
+   */
+  async rssUploadLog(account = "", limit = 20) {
+    if (USE_MOCK) return { logs: [] }
+    try {
+      const qs = new URLSearchParams({ limit: String(limit) })
+      if (account) qs.set("account", account)
+      const res = await fetchJSON(`/api/accounts/rss-upload-log?${qs.toString()}`)
+      return { logs: res?.logs || res?.log || [] }
+    } catch (err) {
+      throw toError(err, "读取上传日志失败")
     }
   },
 

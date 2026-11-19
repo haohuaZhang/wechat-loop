@@ -546,88 +546,211 @@ AccountsPage.propTypes = {
 }
 
 /**
- * RSS 订阅弹窗 —— 查看状态 / 开关订阅 / 复制 RSS 链接
+ * RSS 订阅弹窗 —— 与上游 wechat-mp-tools 保持一致：
+ * 开关订阅 / 随机抓取间隔 / 完整状态区 / 手动上传 / 上传日志 / 预览
  * @param {{account: {fakeid: string, nickname: string}, onClose: () => void, onToast: (t: string) => void}} props
  */
+
+// 上游的随机抖动规则：±25%，最小 5 分钟
+function rssIntervalRange(minutes) {
+  const iv = Math.max(15, parseInt(minutes, 10) || 60)
+  const jitter = Math.max(5, Math.round(iv * 0.25))
+  return { min: Math.max(5, iv - jitter), max: iv + jitter }
+}
+
+function fmtDuration(minutes) {
+  if (minutes < 60) return `${minutes} 分钟`
+  const h = minutes / 60
+  return `${Number.isInteger(h) ? h : Number(h.toFixed(1))} 小时`
+}
+
+function fmtIntervalRange(minutes) {
+  const { min, max } = rssIntervalRange(minutes)
+  if (max <= 180) return `约 ${min}-${max} 分钟随机`
+  return `约 ${fmtDuration(min)} - ${fmtDuration(max)} 随机`
+}
+
+function fmtTs(ts) {
+  if (!ts) return ""
+  const d = new Date(ts * 1000)
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toLocaleString("zh-CN", {
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  })
+}
+
+function uploadStatusText(sub, uploadEnabled) {
+  if (!uploadEnabled) return "已关闭"
+  const pending = sub?.pending_upload_count || 0
+  if (pending > 0) return `${pending} 篇待上传`
+  if (sub?.last_upload_error) return "上次上传失败"
+  return "✅ 已全部上传"
+}
+
+const RSS_INTERVALS = [15, 30, 60, 120, 360, 720, 1440]
+
+function StatusRow({ label, children }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-0.5">
+      <span className="shrink-0 text-muted-foreground">{label}：</span>
+      <span className="min-w-0 text-right">{children}</span>
+    </div>
+  )
+}
+
+StatusRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  children: PropTypes.node,
+}
+
 function RssDialog({ account, onClose, onToast }) {
   const [loading, setLoading] = React.useState(true)
-  const [saving, setSaving] = React.useState(false)
+  const [busy, setBusy] = React.useState("")
   const [sub, setSub] = React.useState(null)
   const [interval, setInterval] = React.useState(60)
+  const [uploadEnabled, setUploadEnabled] = React.useState(false)
   const [error, setError] = React.useState("")
   const [rssUrl, setRssUrl] = React.useState("")
+  const [copied, setCopied] = React.useState(false)
+  const [logs, setLogs] = React.useState(null)
+  const [logsLoading, setLogsLoading] = React.useState(false)
 
-  React.useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const [subsRes, settings] = await Promise.all([
-          api.rssSubscriptions(),
-          api.getSettings().catch(() => ({})),
-        ])
-        if (cancelled) return
-        const found = (subsRes.subscriptions || []).find((s) => s.fakeid === account.fakeid) || null
-        setSub(found)
-        setInterval(found?.interval_minutes || 60)
-
-        const base = String(settings?.rss_base_url || window.location.origin).trim().replace(/\/+$/, "")
-        const token = String(settings?.rss_token || "").trim()
-        const q = token ? `?token=${encodeURIComponent(token)}` : ""
-        setRssUrl(`${base.startsWith("http") ? base : `https://${base}`}/api/articles/rss/${encodeURIComponent(account.nickname)}${q}`)
-      } catch (err) {
-        if (!cancelled) setError(err?.message || "读取 RSS 订阅状态失败")
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [account.fakeid, account.nickname])
-
-  const toggle = async (enable) => {
-    setSaving(true)
+  const load = React.useCallback(async () => {
     setError("")
     try {
-      if (enable) {
-        await api.rssSubscribe(account.fakeid, interval)
-        onToast(`已开启「${account.nickname}」的 RSS 自动抓取`)
+      const [subsRes, settings] = await Promise.all([
+        api.rssSubscriptions(),
+        api.fetchSettings().catch(() => ({})),
+      ])
+      const found = (subsRes.subscriptions || []).find((s) => s.fakeid === account.fakeid) || null
+      setSub(found)
+      setInterval(found?.interval_minutes || 60)
+      setUploadEnabled(!!settings?.rss_upload_enabled)
+
+      const base = String(settings?.rss_base_url || window.location.origin).trim().replace(/\/+$/, "")
+      const token = String(settings?.rss_token || "").trim()
+      const q = token ? `?token=${encodeURIComponent(token)}` : ""
+      const origin = /^https?:\/\//i.test(base) ? base : `https://${base}`
+      setRssUrl(`${origin}/api/articles/rss/${encodeURIComponent(account.nickname)}${q}`)
+    } catch (err) {
+      setError(err?.message || "读取 RSS 订阅状态失败")
+    } finally {
+      setLoading(false)
+    }
+  }, [account.fakeid, account.nickname])
+
+  React.useEffect(() => { load() }, [load])
+
+  const enabled = !!sub?.enabled
+
+  const doToggle = async (next) => {
+    setBusy("toggle")
+    setError("")
+    try {
+      if (next) {
+        const res = await api.rssSubscribe(account.fakeid, interval)
+        onToast(res?.message || `已开启「${account.nickname}」的 RSS 自动抓取`)
       } else {
         await api.rssUnsubscribe(account.fakeid)
         onToast(`已关闭「${account.nickname}」的 RSS 自动抓取`)
+        setLogs(null)
       }
-      const subsRes = await api.rssSubscriptions()
-      setSub((subsRes.subscriptions || []).find((s) => s.fakeid === account.fakeid) || null)
+      await load()
     } catch (err) {
       setError(err?.message || "操作失败")
     } finally {
-      setSaving(false)
+      setBusy("")
+    }
+  }
+
+  const doChangeInterval = async (value) => {
+    setInterval(value)
+    if (!enabled) return
+    setBusy("interval")
+    setError("")
+    try {
+      const res = await api.rssSubscribe(account.fakeid, value)
+      const suffix = res?.immediate_fetch === false ? "（当前不在采集时间段内）" : ""
+      onToast(`抓取间隔已更新为 ${fmtIntervalRange(value)}${suffix}`)
+      await load()
+    } catch (err) {
+      setError(err?.message || "保存间隔失败")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const doRefresh = async () => {
+    setBusy("refresh")
+    try {
+      await load()
+      onToast("状态已刷新")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const doForceUpload = async () => {
+    setBusy("upload")
+    setError("")
+    try {
+      const res = await api.rssForceUpload(account.fakeid)
+      if (res?.success) {
+        onToast(res.succeeded > 0 ? `上传成功 ${res.succeeded} 篇` : "没有待上传的文章")
+      } else {
+        const q = res?.quarantined ? `，${res.quarantined} 篇已隔离` : ""
+        onToast((res?.error || "上传失败") + q)
+      }
+      await load()
+    } catch (err) {
+      setError(err?.message || "上传失败")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const toggleLogs = async () => {
+    if (logs !== null) {
+      setLogs(null)
+      return
+    }
+    setLogsLoading(true)
+    try {
+      const res = await api.rssUploadLog(account.nickname, 20)
+      setLogs(res.logs || [])
+    } catch (err) {
+      setError(err?.message || "读取上传日志失败")
+      setLogs([])
+    } finally {
+      setLogsLoading(false)
     }
   }
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(rssUrl)
-      onToast("RSS 链接已复制")
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      onToast("RSS 地址已复制到剪贴板")
     } catch {
       onToast("复制失败，请手动选中复制")
     }
   }
 
-  const enabled = !!sub?.enabled
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-lg rounded-md border border-border bg-card p-5 shadow-card"
+        className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto rounded-md border border-border bg-card p-5 shadow-card"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="RSS 订阅设置"
       >
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-serif text-lg font-semibold tracking-tight">RSS 订阅</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{account.nickname}</p>
+          <div className="min-w-0">
+            <h3 className="font-serif text-lg font-semibold tracking-tight">
+              📡 RSS 订阅 — {account.nickname}
+            </h3>
           </div>
           <button type="button" onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-secondary" aria-label="关闭">
             <X className="h-4 w-4" aria-hidden="true" />
@@ -641,63 +764,202 @@ function RssDialog({ account, onClose, onToast }) {
             <Skeleton className="h-9 w-full" />
           </div>
         ) : (
-          <div className="mt-4 flex flex-col gap-4">
-            <div className="flex items-center justify-between rounded-md border border-border bg-surface/50 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">订阅状态</span>
-              <span className={cn("font-medium", enabled ? "text-[#385742]" : "text-muted-foreground")}>
-                {enabled ? "运行中" : "未订阅"}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <label htmlFor="rss-interval" className="text-sm text-muted-foreground">抓取间隔</label>
-              <select
-                id="rss-interval"
-                value={interval}
-                onChange={(e) => setInterval(Number(e.target.value))}
-                className="h-8 rounded-md border border-border bg-surface px-2 text-xs outline-none focus:border-primary"
+          <div className="mt-4 flex flex-col">
+            {/* 开关 */}
+            <div className="flex items-start justify-between gap-3 rounded-md border border-border bg-surface/40 px-3 py-2.5">
+              <div>
+                <div className="text-sm font-medium">自动订阅抓取</div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  开启后系统后台随机间隔抓取该公众号最新文章
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={enabled}
+                aria-label="自动订阅抓取"
+                disabled={busy === "toggle"}
+                onClick={() => doToggle(!enabled)}
+                className={cn(
+                  "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors disabled:opacity-60",
+                  enabled ? "border-[#4F7A5A] bg-[#4F7A5A]" : "border-border bg-surface"
+                )}
               >
-                <option value={30}>30 分钟</option>
-                <option value={60}>1 小时</option>
-                <option value={180}>3 小时</option>
-                <option value={360}>6 小时</option>
-              </select>
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                    enabled ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
             </div>
 
-            {enabled && sub?.last_fetch_time && (
-              <p className="text-[11px] text-muted-foreground">
-                上次抓取：{new Date(sub.last_fetch_time * 1000).toLocaleString("zh-CN")}
-                {sub.last_fetch_count !== undefined ? ` · 新增 ${sub.last_fetch_count} 篇` : ""}
-              </p>
+            {/* 间隔选择（已订阅时才显示，与上游一致） */}
+            {enabled && (
+              <div className="mt-3">
+                <label htmlFor="rss-interval" className="mb-1.5 block text-[13px] font-medium">
+                  抓取时间间隔
+                </label>
+                <select
+                  id="rss-interval"
+                  value={interval}
+                  disabled={busy === "interval"}
+                  onChange={(e) => doChangeInterval(Number(e.target.value))}
+                  className="h-9 w-full rounded-md border border-border bg-surface px-2 text-sm outline-none focus:border-primary disabled:opacity-60"
+                >
+                  {RSS_INTERVALS.map((v) => (
+                    <option key={v} value={v}>
+                      {fmtIntervalRange(v)}{v === 60 ? "（推荐）" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
 
-            <div className="flex flex-col gap-1.5">
-              <span className="text-sm text-muted-foreground">RSS 链接</span>
-              <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-surface/60 px-2.5 py-1.5 font-mono text-[11px]">
-                  {rssUrl}
-                </code>
-                <Button type="button" variant="outline" size="sm" onClick={copy} className="h-8 shrink-0 gap-1 text-[12px]">
-                  <Copy className="h-3 w-3" aria-hidden="true" />
-                  复制
-                </Button>
+            {/* 状态区 */}
+            {enabled ? (
+              <div className="mt-3 rounded-md border border-border bg-[#B8862F]/[0.04] px-3 py-2.5 text-[12px]">
+                <StatusRow label="订阅状态">
+                  {sub?.last_error
+                    ? <span className="text-[#A94438]">⚠️ 异常（{sub.last_error}）</span>
+                    : <span className="font-medium text-[#385742]">🟢 运行中</span>}
+                </StatusRow>
+                <StatusRow label="抓取间隔">{fmtIntervalRange(interval)}</StatusRow>
+                <StatusRow label="上次抓取">{sub?.last_fetch_time ? fmtTs(sub.last_fetch_time) : "暂无"}</StatusRow>
+                <StatusRow label="下次预计">{sub?.next_fetch_time ? fmtTs(sub.next_fetch_time) : "等待调度"}</StatusRow>
+                <StatusRow label="上次新增">
+                  {sub?.last_fetch_count !== undefined ? `${sub.last_fetch_count} 篇` : "暂无"}
+                </StatusRow>
+                <StatusRow label="上传状态">
+                  <span className={cn(
+                    uploadEnabled && (sub?.pending_upload_count || 0) > 0 ? "text-[#8a6520]" : "text-[#385742]"
+                  )}>
+                    {uploadStatusText(sub, uploadEnabled)}
+                  </span>
+                </StatusRow>
+                <StatusRow label="上次上传">{sub?.last_upload_time ? fmtTs(sub.last_upload_time) : "暂无"}</StatusRow>
+
+                {uploadEnabled && (sub?.quarantined_count || 0) > 0 && (
+                  <StatusRow label="已隔离">
+                    <span className="text-[#A94438]">⛔ {sub.quarantined_count} 篇（多次失败已跳过）</span>
+                  </StatusRow>
+                )}
+                {sub?.last_upload_error && (
+                  <StatusRow label="上传错误">
+                    <span className="break-all text-[#A94438]">{sub.last_upload_error}</span>
+                  </StatusRow>
+                )}
+
+                <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                  {uploadEnabled && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1 text-[11px]"
+                      disabled={!!busy}
+                      onClick={doForceUpload}
+                    >
+                      <CloudDownload className={cn("h-3 w-3", busy === "upload" && "animate-pulse")} />
+                      上传历史文章
+                    </Button>
+                  )}
+                  {uploadEnabled && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-[11px]"
+                      disabled={logsLoading}
+                      onClick={toggleLogs}
+                    >
+                      上传日志
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 gap-1 text-[11px]"
+                    disabled={!!busy}
+                    onClick={doRefresh}
+                  >
+                    <RefreshCw className={cn("h-3 w-3", busy === "refresh" && "animate-spin")} />
+                    刷新状态
+                  </Button>
+                </div>
+
+                {logs !== null && (
+                  <div className="mt-2 max-h-[160px] overflow-y-auto border-t border-border/60 pt-1.5">
+                    {logsLoading ? (
+                      <p className="py-2 text-center text-muted-foreground">加载中…</p>
+                    ) : logs.length === 0 ? (
+                      <p className="py-2 text-center text-muted-foreground">暂无上传记录</p>
+                    ) : (
+                      logs.map((r, i) => (
+                        <div
+                          key={`${r.time || 0}-${i}`}
+                          className="flex items-center justify-between gap-2 border-b border-dashed border-border/60 py-1 text-[11px] last:border-0"
+                        >
+                          <span className="text-muted-foreground">
+                            {fmtTs(r.time)} · {r.trigger === "manual" ? "手动" : "自动"}
+                          </span>
+                          <span>
+                            <span className="text-[#4F7A5A]">✓{r.succeeded || 0}</span>
+                            {(r.failed || 0) > 0 && <span className="text-[#A94438]"> ✗{r.failed}</span>}
+                            {(r.quarantined || 0) > 0 && <span className="text-[#A94438]"> ⛔{r.quarantined}</span>}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-2 flex items-center justify-between border-t border-border/60 pt-1.5">
+                  <span className="text-muted-foreground">累计抓取：</span>
+                  <span>{sub?.total_articles || 0} 篇</span>
+                </div>
               </div>
+            ) : (
+              <div className="mt-3 rounded-md border border-border bg-surface/50 px-3 py-2 text-[12px] text-muted-foreground">
+                💡 开启自动订阅后，系统会按随机间隔抓取该公众号最新文章并更新到 RSS。
+              </div>
+            )}
+
+            <hr className="my-4 border-0 border-t border-border" />
+
+            {/* RSS 地址 */}
+            <label htmlFor="rss-url" className="mb-1.5 block text-[13px] font-medium">
+              RSS Feed 地址
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="rss-url"
+                readOnly
+                value={rssUrl}
+                onFocus={(e) => e.target.select()}
+                className="h-9 min-w-0 flex-1 cursor-text rounded-md border border-border bg-surface/60 px-2.5 font-mono text-[11px] outline-none"
+              />
+              <Button type="button" size="sm" className="h-9 shrink-0 gap-1" onClick={copy}>
+                <Copy className="h-3 w-3" aria-hidden="true" />
+                {copied ? "已复制" : "复制"}
+              </Button>
             </div>
 
-            {error && <p className="text-[12px] text-[#7d2f26]">{error}</p>}
+            {error && <p className="mt-2 text-[12px] text-[#7d2f26]">{error}</p>}
 
-            <div className="flex justify-end gap-2">
-              {enabled ? (
-                <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => toggle(false)} className="gap-1.5">
-                  {saving && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
-                  关闭订阅
-                </Button>
-              ) : (
-                <Button type="button" size="sm" disabled={saving} onClick={() => toggle(true)} className="gap-1.5">
-                  {saving && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
-                  开启订阅
-                </Button>
-              )}
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <a
+                href={rssUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[12px] text-[#2f6f8f] underline-offset-2 hover:underline"
+              >
+                🔗 在浏览器中预览
+              </a>
+              <Button type="button" variant="outline" size="sm" onClick={onClose}>
+                关闭
+              </Button>
             </div>
           </div>
         )}
