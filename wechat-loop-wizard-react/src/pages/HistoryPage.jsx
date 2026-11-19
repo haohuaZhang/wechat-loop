@@ -715,7 +715,7 @@ export function HistoryPage() {
                   ref={iframeRef}
                   key={activeIdx + "-" + (activeItem.path || "")}
                   src={buildArticleServeUrl(activeItem)}
-                  className="flex-1 w-0 border-0 bg-white"
+                  className="h-0 w-full flex-1 border-0 bg-white"
                   title={activeItem.title || "文章正文"}
                 />
               </div>
