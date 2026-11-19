@@ -227,13 +227,13 @@ def article_html():
 # 正文里的图片还普遍是 <img data-src="..."> 懒加载，没有 JS 就永远不加载。
 # 这里统一改写成走本机代理，由后端带上 Referer 去取。
 IMG_CACHE_DIR = LOOP_ROOT / "loop" / ".imgcache"
+# 只代理「图片 CDN」，不要把 weixin.qq.com 这类 HTML 页面也算进来：
+# 正文里嵌的视频/名片是 <iframe src="https://mp.weixin.qq.com/...">，
+# 之前一改写就会拉回一整页 HTML 甚至 JSON 错误，直接显示在正文中间。
 IMG_ALLOW_HOSTS = (
     ".qpic.cn",
     ".qlogo.cn",
-    ".wx.qq.com",
-    ".weixin.qq.com",
     ".gtimg.com",
-    ".qq.com",
 )
 
 
@@ -338,23 +338,22 @@ def image_proxy():
             headers={"Cache-Control": "public, max-age=604800"},
         )
 
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Referer": "https://mp.weixin.qq.com/",
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/122.0 Safari/537.36"
-            ),
-            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = resp.read()
-            ctype = resp.headers.get("Content-Type", "").split(";")[0].strip()
-    except Exception as exc:  # 网络问题 / 图片已删
-        return jsonify({"error": f"图片拉取失败：{exc}"}), 502
+    req_headers = {
+        "Referer": "https://mp.weixin.qq.com/",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0 Safari/537.36"
+        ),
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    data, ctype = _download_image(url, req_headers)
+    if data is None:
+        # 失败时回 1x1 透明图：正文里只会留一块空白，不会把 JSON 错误糊在页面上
+        return Response(
+            BLANK_GIF,
+            mimetype="image/gif",
+            headers={"Cache-Control": "no-store"},
+        )
 
     if not ctype.startswith("image/"):
         ctype = mimetypes.guess_type(parsed.path)[0] or "image/jpeg"
@@ -365,6 +364,53 @@ def image_proxy():
         pass  # 缓存失败不影响返回
 
     return Response(data, mimetype=ctype, headers={"Cache-Control": "public, max-age=604800"})
+
+
+# 1x1 透明 gif，用于图片拉取失败时的占位
+BLANK_GIF = (
+    b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!"
+    b"\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00"
+    b"\x00\x02\x02D\x01\x00;"
+)
+
+
+def _download_image(url: str, headers: dict) -> tuple[bytes | None, str]:
+    """取图片字节。
+
+    macOS 上 python.org 安装的 Python 经常没有根证书，走 https 会直接
+    CERTIFICATE_VERIFY_FAILED。这里先试校验证书，失败再降级成不校验
+    （只用于取公众号图片，不涉及敏感数据），两种都失败才算真的失败。
+    """
+    try:
+        import requests
+
+        for verify in (True, False):
+            try:
+                resp = requests.get(url, headers=headers, timeout=20, verify=verify)
+                if resp.status_code >= 400:
+                    continue
+                return resp.content, (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+            except requests.exceptions.SSLError:
+                continue  # 证书问题，换不校验再试
+            except Exception:
+                break  # 网络问题，别死循环
+    except ImportError:
+        pass
+
+    # requests 不可用时退回 urllib，同样带一次不校验的重试
+    import ssl
+    import urllib.request
+
+    for context in (None, ssl._create_unverified_context()):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=20, context=context) as resp:
+                return resp.read(), (resp.headers.get("Content-Type") or "").split(";")[0].strip()
+        except ssl.SSLError:
+            continue
+        except Exception:
+            break
+    return None, ""
 
 
 # ---- 后端自检 ----
