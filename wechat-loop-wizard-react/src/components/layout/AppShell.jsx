@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils"
  * @param {function(string)} props.onNavigate 点击导航项时触发
  * @param {React.ReactNode} props.children 主内容区
  */
+// hidden: true 的项不进导航，但路由仍然可用（直接访问 #/proxy 能打开）
+// 以后要放出来，把 hidden 删掉即可
 const NAV_ITEMS = [
   { key: "pool",      label: "账号池",    icon: "Users",     hint: "扫码添加账号 · 多号轮换" },
   { key: "accounts",  label: "公众号管理",icon: "BookOpen",   hint: "搜索、关注、批量采集" },
@@ -18,9 +20,11 @@ const NAV_ITEMS = [
   { key: "download",  label: "网址下载",  icon: "Download",   hint: "粘贴文章链接 · 内容过滤" },
   { key: "history",   label: "下载历史",  icon: "History",    hint: "双栏预览 · 打开 MD/PDF · RSS" },
   { key: "library",   label: "入库文章",  icon: "Library",    hint: "知识库 · 浏览搜索筛选" },
-  { key: "proxy",     label: "代理设置",  icon: "Globe",      hint: "单代理 · 代理池轮换 · 免费代理测活" },
+  { key: "proxy",     label: "代理设置",  icon: "Globe",      hint: "单代理 · 代理池轮换 · 免费代理测活", hidden: true },
   { key: "settings",  label: "设置",      icon: "Settings",   hint: "通道、降级、诊断" },
 ]
+
+const VISIBLE_NAV_ITEMS = NAV_ITEMS.filter((item) => !item.hidden)
 
 export function AppShell({ current, onNavigate, children }) {
   return (
@@ -46,7 +50,7 @@ export function AppShell({ current, onNavigate, children }) {
         </div>
 
         <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => {
+          {VISIBLE_NAV_ITEMS.map((item) => {
             const active = current === item.key
             return (
               <button
@@ -86,7 +90,7 @@ export function AppShell({ current, onNavigate, children }) {
 
       {/* 主内容区 */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <NavBar current={current} onNavigate={onNavigate} navItems={NAV_ITEMS} />
+        <NavBar current={current} onNavigate={onNavigate} navItems={VISIBLE_NAV_ITEMS} />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:px-6">
           {children}
         </main>
