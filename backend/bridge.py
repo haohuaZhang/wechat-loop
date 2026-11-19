@@ -253,49 +253,94 @@ def _host_allowed(host: str) -> bool:
 
 
 def _rewrite_media_urls(html: str) -> str:
-    """把正文里的微信图片地址改写成 /api/image-proxy，并补上 src 让懒加载图显形"""
+    """把正文里的微信图片地址改写成 /api/image-proxy，并补上 src 让懒加载图显形
+
+    要覆盖公众号正文里真实出现的几种写法：
+      - src / data-src，单双引号都可能
+      - 协议相对地址 //mmbiz.qpic.cn/...（正文里非常常见）
+      - style="background-image:url(...)"，引号可能被转义成 &quot;
+    """
     import re
 
-    def proxy_if_allowed(url: str) -> str:
+    def proxy_if_allowed(url: str) -> str | None:
         from urllib.parse import urlparse
 
+        raw = (url or "").strip().replace("&amp;", "&")
+        if raw.startswith("//"):
+            raw = "https:" + raw
         try:
-            parsed = urlparse(url)
+            parsed = urlparse(raw)
         except Exception:
-            return url
+            return None
         if parsed.scheme not in ("http", "https") or not _host_allowed(parsed.hostname or ""):
-            return url
-        return _proxy_url(url)
+            return None
+        return _proxy_url(raw)
+
+    def set_attr(tag: str, name: str, value: str) -> str:
+        # (?<![-\w]) 防止匹配到 data-src 里头的 src
+        return re.sub(
+            r"((?<![-\w])" + name + r"\s*=\s*)([\"']).*?\2",
+            lambda m: f"{m.group(1)}{m.group(2)}{value}{m.group(2)}",
+            tag,
+            count=1,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
 
     def fix_img(match: "re.Match") -> str:
         tag = match.group(0)
-        lazy = re.search(r'data-src\s*=\s*"([^"]+)"', tag)
-        src = re.search(r'\ssrc\s*=\s*"([^"]*)"', tag)
-        source = (lazy.group(1) if lazy else "") or (src.group(1) if src else "")
+        lazy = re.search(r'data-src\s*=\s*(["\'])(.*?)\1', tag, re.IGNORECASE | re.DOTALL)
+        src = re.search(r'\ssrc\s*=\s*(["\'])(.*?)\1', tag, re.IGNORECASE | re.DOTALL)
+        source = (lazy.group(2) if lazy else "") or (src.group(2) if src else "")
         proxied = proxy_if_allowed(source)
-        if proxied == source:
+        if not proxied:
             return tag
         if lazy:
-            tag = tag.replace(lazy.group(0), f'data-src="{proxied}"')
+            tag = set_attr(tag, "data-src", proxied)
         if src:
-            tag = tag.replace(src.group(0), f' src="{proxied}"', 1)
-        else:
-            tag = tag[:-1] + f' src="{proxied}">' if tag.endswith(">") else tag
+            tag = set_attr(tag, "src", proxied)
+        elif tag.endswith("/>"):
+            tag = tag[:-2].rstrip() + f' src="{proxied}"/>'
+        elif tag.endswith(">"):
+            tag = tag[:-1].rstrip() + f' src="{proxied}">'
         # 懒加载图常见 class 是 opacity:0，直接抹掉让图可见
-        tag = re.sub(r'style="[^"]*(?:opacity\s*:\s*0|visibility\s*:\s*hidden)[^"]*"', "", tag)
+        tag = re.sub(
+            r'\s*style\s*=\s*["\'][^"\']*(?:opacity\s*:\s*0|visibility\s*:\s*hidden)[^"\']*["\']',
+            "",
+            tag,
+            flags=re.IGNORECASE,
+        )
         return tag
 
     html = re.sub(r"<img\b[^>]*>", fix_img, html, flags=re.IGNORECASE)
-    # video / source / 背景图里的直链同样走代理
+
+    # 其余 src / data-src / poster / media 一律走代理（含单引号与协议相对写法）
+    def repl_attr(m: "re.Match") -> str:
+        attr, quote, url = m.group(1), m.group(2), m.group(3)
+        proxied = proxy_if_allowed(url)
+        if not proxied:
+            return m.group(0)
+        return f"{attr}={quote}{proxied}{quote}"
+
     html = re.sub(
-        r'(src|data-src|poster)\s*=\s*"(https?://[^"]+)"',
-        lambda m: f'{m.group(1)}="{proxy_if_allowed(m.group(2))}"',
+        r"\b(src|data-src|poster|media)\s*=\s*([\"'])((?:https?:)?//[^\"']+)\2",
+        repl_attr,
         html,
         flags=re.IGNORECASE,
     )
+
+    # 背景图：兼容 url('...') / url("...") / url(&quot;...&quot;) / url(//...)
+    def repl_bg(m: "re.Match") -> str:
+        proxied = proxy_if_allowed(m.group(2))
+        if not proxied:
+            return m.group(0)
+        return f"{m.group(1)}url('{proxied}')"
+
     html = re.sub(
-        r"background-image\s*:\s*url\(['\"]?(https?://[^)'\"]+)['\"]?\)",
-        lambda m: f"background-image:url('{proxy_if_allowed(m.group(1))}')",
+        r"(background-image\s*:\s*)"
+        r"url\(\s*(?:&quot;|&#39;|&apos;|[\"'])?\s*"
+        r"((?:https?:)?//[^)\"'&\s]+)"
+        r"\s*(?:&quot;|&#39;|&apos;|[\"'])?\s*\)",
+        repl_bg,
         html,
         flags=re.IGNORECASE,
     )
