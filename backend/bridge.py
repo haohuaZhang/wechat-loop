@@ -176,9 +176,13 @@ def article_html():
     if not p:
         return jsonify({"error": "缺少 p 参数"}), 400
     try:
-        raw = base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)).decode("utf-8")
+        raw = base64.b64decode(
+            p + "=" * (-len(p) % 4), altchars=b"-_", validate=True
+        ).decode("utf-8")
     except Exception:
         return jsonify({"error": "p 不是合法的 base64url"}), 400
+    if not raw.strip():
+        return jsonify({"error": "p 解码后为空"}), 400
 
     from backend.config import OUTPUT_DIR, get_settings
 
