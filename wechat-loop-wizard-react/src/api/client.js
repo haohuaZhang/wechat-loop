@@ -45,8 +45,20 @@ async function fetchJSON(path, options = {}) {
     ...options,
   })
   if (!res.ok) {
-    const body = await res.text().catch(() => "")
-    throw new Error(`HTTP ${res.status}: ${body || res.statusText}`)
+    const raw = await res.text().catch(() => "")
+    // 后端错误统一是 {"error": "人话"}，直接抽出来；
+    // 否则（Flask 默认 HTML 错误页）只留状态码，避免把整页 HTML 甩到界面上
+    let detail = ""
+    try {
+      const parsed = JSON.parse(raw)
+      detail = parsed?.error || parsed?.message || ""
+    } catch {
+      detail = ""
+    }
+    const err = new Error(detail || `请求失败（HTTP ${res.status}）`)
+    err.status = res.status
+    err.raw = raw
+    throw err
   }
   return res.json()
 }
@@ -716,13 +728,18 @@ export const api = {
    * 返回 { mps: [{fakeid, bookId, nickname, avatar, signature}], total, cached,
    *        throttled?, cooldown_left?, need_verify?, error? }
    */
-  async listUserMps({ force = false } = {}) {
+  async listUserMps({ force = false, timeoutMs = 75000 } = {}) {
     if (USE_MOCK) {
       await delay(300)
       return { mps: [], total: 0, cached: false }
     }
+    // 后端要真去请求微信读书，正常情况下 5–20 秒；不设超时会让按钮永远「同步中…」
+    const ctrl = new AbortController()
+    const timer = window.setTimeout(() => ctrl.abort(), timeoutMs)
     try {
-      const res = await fetchJSON(`/api/accounts/user-mps${force ? "?force=1" : ""}`)
+      const res = await fetchJSON(`/api/accounts/user-mps${force ? "?force=1" : ""}`, {
+        signal: ctrl.signal,
+      })
       const mps = (res?.mps || []).map(normalizeAccount)
       return {
         mps,
@@ -734,7 +751,15 @@ export const api = {
         error: res?.error || "",
       }
     } catch (err) {
+      if (err?.name === "AbortError") {
+        throw new Error(`微信读书 ${Math.round(timeoutMs / 1000)} 秒内没有返回，请重试；若反复超时通常是账号被风控`)
+      }
+      if (err?.status === 401) {
+        throw new Error(err.message || "微信读书账号池里没有可用账号，请先去『账号池』扫码登录")
+      }
       throw toError(err, "从微信读书同步失败")
+    } finally {
+      window.clearTimeout(timer)
     }
   },
 

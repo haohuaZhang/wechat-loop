@@ -293,11 +293,53 @@ export function AccountsPage({ onNavigate }) {
           </div>
         </CardHeader>
         <CardContent className="pb-5 pt-0">
+          {syncing && (
+            <div className="mt-2 flex flex-col gap-2">
+              <p className="text-[12px] leading-6 text-muted-foreground">
+                正在读取微信读书书架，通常需要 5–20 秒，请稍候…
+              </p>
+              <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface/40">
+                {[0, 1, 2].map((i) => (
+                  <li key={i} className="flex items-center gap-3 px-4 py-3">
+                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-3 w-28" />
+                      <Skeleton className="h-2.5 w-40" />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {syncError && (
             <Alert variant="destructive" className="mt-2">
               <AlertTriangle className="h-4 w-4" aria-hidden="true" />
               <AlertTitle className="font-serif text-sm font-semibold">同步未完成</AlertTitle>
-              <AlertDescription className="mt-1 text-[12px] leading-6">{syncError}</AlertDescription>
+              <AlertDescription className="mt-1 flex flex-col gap-2 text-[12px] leading-6">
+                <span>{syncError}</span>
+                {needsAccountPool(syncError) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 self-start gap-1 text-[12px] active:scale-95"
+                    onClick={() => onNavigate?.("pool")}
+                  >
+                    去账号池登录
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 self-start gap-1 text-[12px] active:scale-95"
+                  onClick={() => handleSync(true)}
+                >
+                  <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                  重试同步
+                </Button>
+              </AlertDescription>
             </Alert>
           )}
 
@@ -686,6 +728,14 @@ function Avatar({ acc }) {
 
 Avatar.propTypes = {
   acc: PropTypes.shape({ nickname: PropTypes.string, avatar: PropTypes.string }).isRequired,
+}
+
+/**
+ * 错误文案里出现「账号池 / 登录 / 扫码」时，提示用户去账号池页
+ * @param {string} message
+ */
+function needsAccountPool(message) {
+  return /账号池|扫码|登录|未登录/.test(String(message || ""))
 }
 
 /**
