@@ -13,6 +13,7 @@ const ROUTES = {
   download: () => import("@/pages/DownloadPage").then((m) => m.DownloadPage),
   history: () => import("@/pages/HistoryPage").then((m) => m.HistoryPage || m.default),
   library: () => import("@/pages/LibraryPage").then((m) => m.LibraryPage),
+  studio: () => import("@/pages/StudioPage").then((m) => m.StudioPage),
   proxy: () => import("@/pages/ProxyPage").then((m) => m.ProxyPage),
   settings: () => import("@/pages/SettingsPage").then((m) => m.SettingsPage),
 }

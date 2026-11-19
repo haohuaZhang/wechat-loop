@@ -19,6 +19,7 @@ bridge.py —— 在 wechat-mp-tools Flask app 上追加 wechat-loop 专属端�
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
@@ -33,7 +34,18 @@ if str(WMT_DIR) not in sys.path:
 from app_mp import app  # noqa: E402  —— 导入 Flask app（上游只读）
 
 # ---- 知识库数据源 ----
-LOOP_ROOT = Path(__file__).resolve().parent.parent.parent
+# LOOP_ROOT 必须是「仓库根目录」（loop/ 的父级）。这里做一次探测而不是
+# 直接写死 parent.parent：历史上这里写成 parent.parent.parent，导致
+# KB_DIR 指到仓库外，知识库永远读成 0 篇。
+def _pick_loop_root() -> Path:
+    here = Path(__file__).resolve().parent
+    for cand in (here.parent, here.parent.parent):
+        if (cand / "loop").is_dir():
+            return cand
+    return here.parent
+
+
+LOOP_ROOT = _pick_loop_root()
 KB_DIR = LOOP_ROOT / "loop"
 MAIN_KB = KB_DIR / "knowledge_base.json"
 ACTIVE_KB_FILE = KB_DIR / ".active_kb"  # 记录当前活动的 KB id
@@ -156,6 +168,233 @@ def create_knowledge_base():
             "isActive": False,
             "articleCount": 0,
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---- 知识库：检索 / 详情 / 标签 / 导出 ----
+
+def _active_kb_path() -> Path:
+    """当前活动知识库文件路径（回退到主知识库）"""
+    _ensure_dirs()
+    kb_id = ACTIVE_KB_FILE.read_text(encoding="utf-8").strip() if ACTIVE_KB_FILE.exists() else "default"
+    if kb_id and kb_id != "default":
+        cand = KB_DIR / "kb" / f"{kb_id}.json"
+        if cand.exists():
+            return cand
+    return MAIN_KB
+
+
+def _kb_articles() -> list[dict]:
+    """把两种 KB 结构（dict.articles / list）统一成文章列表"""
+    data = _load_json(_active_kb_path(), {})
+    out: list[dict] = []
+    if isinstance(data, dict):
+        for aid, meta in (data.get("articles") or {}).items():
+            if isinstance(meta, dict):
+                item = dict(meta)
+                item.setdefault("id", aid)
+                out.append(item)
+    elif isinstance(data, list):
+        out = [dict(x) for x in data if isinstance(x, dict)]
+    for i, item in enumerate(out):
+        item.setdefault("id", f"article_{i}")
+    return out
+
+
+def _article_content(item: dict) -> str:
+    """正文优先取 content 字段，没有就读 local_md_path"""
+    content = item.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    rel = item.get("local_md_path") or ""
+    if rel:
+        p = (LOOP_ROOT / rel).resolve()
+        try:
+            p.relative_to(LOOP_ROOT.resolve())
+        except ValueError:
+            return ""
+        if p.is_file():
+            return p.read_text(encoding="utf-8", errors="replace")
+    return ""
+
+
+def _snippet(text: str, size: int = 110) -> str:
+    plain = " ".join(
+        line.strip() for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith(("#", "!", "|", ">", "---"))
+    )
+    plain = plain.replace("**", "").replace("`", "")
+    return plain[:size] + ("…" if len(plain) > size else "")
+
+
+def _kb_item_brief(item: dict) -> dict:
+    content = _article_content(item)
+    return {
+        "id": item.get("id"),
+        "title": item.get("title") or "(无标题)",
+        "account": item.get("source_account") or item.get("account") or "未知",
+        "publishDate": item.get("publish_date") or "",
+        "url": item.get("url") or "",
+        "topics": item.get("topics") or [],
+        "keywords": item.get("keywords") or [],
+        "wordCount": item.get("word_count") or (len(content) if content else 0),
+        "usedAsSource": bool(item.get("used_as_source")),
+        "hasContent": bool(content),
+        "snippet": _snippet(content) if content else "",
+    }
+
+
+def _kb_arg(name: str, encoded_name: str, default: str = "") -> str:
+    """读取查询参数，优先用 base64url 版本（中文参数必须走这个）"""
+    from flask import request
+
+    raw = request.args.get(encoded_name) or ""
+    if raw:
+        try:
+            return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8")
+        except Exception:
+            return ""
+    return request.args.get(name) or default
+
+
+@app.route("/api/kb/articles", methods=["GET"])
+def kb_articles():
+    """检索知识库：?qb=(base64) 或 ?q= 关键词 / ab、tb / sort / limit / offset"""
+    from flask import jsonify, request
+
+    try:
+        q = _kb_arg("q", "qb").strip().lower()
+        account = _kb_arg("account", "ab").strip()
+        tag = _kb_arg("tag", "tb").strip()
+        sort = request.args.get("sort") or "date"
+        try:
+            limit = max(1, min(200, int(request.args.get("limit") or 50)))
+            offset = max(0, int(request.args.get("offset") or 0))
+        except ValueError:
+            return jsonify({"error": "limit/offset 必须是整数"}), 400
+
+        items = _kb_articles()
+        briefs = [_kb_item_brief(x) for x in items]
+
+        if account and account != "all":
+            briefs = [b for b in briefs if b["account"] == account]
+        if tag:
+            briefs = [b for b in briefs if tag in b["topics"] or tag in b["keywords"]]
+        if q:
+            def hit(b: dict) -> bool:
+                haystack = " ".join([
+                    b["title"], b["snippet"], " ".join(b["topics"]), " ".join(b["keywords"]),
+                ]).lower()
+                return q in haystack
+            briefs = [b for b in briefs if hit(b)]
+
+        if sort == "words":
+            briefs.sort(key=lambda b: b["wordCount"], reverse=True)
+            date_source = briefs
+        elif sort == "title":
+            briefs.sort(key=lambda b: b["title"])
+            date_source = briefs
+        else:
+            date_source = sorted(briefs, key=lambda b: b["publishDate"], reverse=True)
+
+        total = len(date_source)
+        page = date_source[offset:offset + limit]
+
+        accounts = {}
+        topics = {}
+        for b in briefs:
+            accounts[b["account"]] = accounts.get(b["account"], 0) + 1
+            for t in b["topics"]:
+                topics[t] = topics.get(t, 0) + 1
+
+        return jsonify({
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "items": page,
+            "accounts": [{"name": k, "count": v} for k, v in sorted(accounts.items())],
+            "topics": [{"name": k, "count": v} for k, v in sorted(topics.items(), key=lambda kv: -kv[1])],
+            "kb": str(_active_kb_path().relative_to(LOOP_ROOT)),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/article/<article_id>", methods=["GET"])
+def kb_article_detail(article_id: str):
+    """单篇详情（含正文）"""
+    from flask import jsonify
+
+    try:
+        for item in _kb_articles():
+            if str(item.get("id")) == article_id:
+                brief = _kb_item_brief(item)
+                brief["content"] = _article_content(item)
+                return jsonify(brief)
+        return jsonify({"error": f"知识库里没有这篇文章：{article_id}"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/export", methods=["GET"])
+def kb_export():
+    """导出：?format=md|json&q=&account=&tag=（沿用列表的筛选条件）"""
+    import io
+    import zipfile
+
+    from flask import Response, jsonify, request
+
+    try:
+        fmt = (request.args.get("format") or "md").lower()
+        q = _kb_arg("q", "qb").strip().lower()
+        account = _kb_arg("account", "ab").strip()
+        tag = _kb_arg("tag", "tb").strip()
+
+        items = _kb_articles()
+        briefs = [_kb_item_brief(x) for x in items]
+        if account and account != "all":
+            briefs = [b for b in briefs if b["account"] == account]
+        if tag:
+            briefs = [b for b in briefs if tag in b["topics"] or tag in b["keywords"]]
+        if q:
+            briefs = [b for b in briefs
+                      if q in " ".join([b["title"], b["snippet"], " ".join(b["topics"])]).lower()]
+        if not briefs:
+            return jsonify({"error": "没有符合条件的文章可导出"}), 404
+
+        by_id = {str(x.get("id")): x for x in items}
+        stamp = time.strftime("%Y%m%d-%H%M")
+
+        if fmt == "json":
+            payload = json.dumps(
+                [{**_kb_item_brief(by_id[b["id"]]), "content": _article_content(by_id[b["id"]])} for b in briefs],
+                ensure_ascii=False, indent=2,
+            )
+            return Response(payload, mimetype="application/json",
+                            headers={"Content-Disposition": f'attachment; filename="kb-{stamp}.json"'})
+
+        if fmt == "zip":
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for b in briefs:
+                    raw = by_id[b["id"]]
+                    body = _article_content(raw)
+                    safe = "".join(c for c in b["title"] if c not in '\\/:*?"<>|')[:60] or b["id"]
+                    zf.writestr(f"{b['publishDate'] or 'unknown'}-{safe}.md",
+                                f"# {b['title']}\n\n> 来源：{b['account']}　{b['publishDate']}\n> 原文：{b['url']}\n\n{body}\n")
+                zf.writestr("manifest.json", json.dumps(briefs, ensure_ascii=False, indent=2))
+            buf.seek(0)
+            return Response(buf.read(), mimetype="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="kb-{stamp}.zip"'})
+
+        chunks = []
+        for b in briefs:
+            body = _article_content(by_id[b["id"]])
+            chunks.append(f"# {b['title']}\n\n> 来源：{b['account']}　{b['publishDate']}\n> 原文：{b['url']}\n\n{body}\n")
+        md = "\n\n---\n\n".join(chunks)
+        return Response(md, mimetype="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="kb-{stamp}.md"'})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -748,6 +987,408 @@ def proxy_fetch_free():
             "errors": errors,
         }
     )
+
+
+# ---- 闭环：检索 / 选题 / 写作 prompt / 排版 / 封面 / 发布草稿 ----
+#
+# 这些能力上游都是「CLI 脚本」，放在仓库 scripts/ 下，依赖 CWD=仓库根、
+# 且脚本之间用 sys.path 互相 import。直接在 Flask 里 import 会污染
+# sys.path 和全局状态（converter、playwright 都很重），所以统一用
+# subprocess 调 CLI，参数走命令行、结果走 stdout 或落盘。
+
+SCRIPTS_DIR = LOOP_ROOT / "scripts"
+RUNS_DIR = KB_DIR / "runs"
+
+
+def _run_script(name: str, args: list[str], timeout: int = 120) -> dict:
+    """跑 scripts/ 下的脚本，返回 {ok, code, stdout, stderr}"""
+    import subprocess
+
+    script = SCRIPTS_DIR / name
+    if not script.is_file():
+        raise FileNotFoundError(f"脚本不存在：{script}")
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([str(SCRIPTS_DIR), env.get("PYTHONPATH", "")]).strip(os.pathsep)
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    proc = subprocess.run(
+        [sys.executable, str(script), *args],
+        cwd=str(LOOP_ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout,
+        env=env,
+    )
+    return {
+        "ok": proc.returncode == 0,
+        "code": proc.returncode,
+        "stdout": proc.stdout or "",
+        "stderr": proc.stderr or "",
+    }
+
+
+def _safe_run_dir(date_tag: str) -> Path:
+    """只允许 YYYYMMDD，防止路径穿越"""
+    import re
+
+    if not re.fullmatch(r"\d{8}", date_tag or ""):
+        raise ValueError("date 必须是 8 位日期，如 20261119")
+    d = RUNS_DIR / date_tag
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _today() -> str:
+    return time.strftime("%Y%m%d")
+
+
+@app.route("/api/loop/topics", methods=["GET"])
+def loop_topics():
+    """选题候选：读知识库 + 运行历史，按新鲜度/价值/去重打分"""
+    from flask import jsonify, request
+
+    try:
+        top_n = str(max(1, min(50, int(request.args.get("top_n") or 5))))
+        min_score = str(float(request.args.get("min_score") or 3.0))
+        res = _run_script("topic_selection.py", ["--top-n", top_n, "--min-score", min_score], timeout=60)
+        if not res["ok"]:
+            # 脚本报错信息通常就是「知识库空了」这类人话，直接透出
+            return jsonify({"error": (res["stderr"] or res["stdout"]).strip()[-400:] or "选题失败"}), 500
+        payload = json.loads(res["stdout"] or "{}")
+        return jsonify(payload)
+    except json.JSONDecodeError:
+        return jsonify({"error": "选题脚本输出不是合法 JSON"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/loop/prompt", methods=["POST"])
+def loop_prompt():
+    """为一个选题生成写作 prompt（检索证据 → 组装模板）"""
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        title = (body.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "缺少 title（选题标题）"}), 400
+
+        date_tag = body.get("date") or _today()
+        run_dir = _safe_run_dir(date_tag)
+        keywords = [str(k) for k in (body.get("keywords") or []) if str(k).strip()]
+        persona = body.get("persona") or "industry-observer"
+        framework = body.get("framework") or "清单型"
+        dimensions = body.get("dimensions") or "叙事视角:问答体 + 类比域:电影 + 情绪基调:毒舌调侃"
+
+        query = " ".join([title, *keywords]).strip()
+        evidence_path = run_dir / "evidence_pack.json"
+        search = _run_script(
+            "simple_search.py",
+            [query, "--top-k", "5", "--output", str(evidence_path.relative_to(LOOP_ROOT))],
+            timeout=90,
+        )
+        if not search["ok"]:
+            return jsonify({"error": f"检索失败：{(search['stderr'] or search['stdout']).strip()[-300:]}"}), 500
+
+        prompt_path = run_dir / ".prompt"
+        built = _run_script(
+            "build_prompt.py",
+            [
+                "--date", date_tag,
+                "--topic-title", title,
+                "--persona", persona,
+                "--framework", framework,
+                "--dimensions", dimensions,
+                "--evidence", str(evidence_path.relative_to(LOOP_ROOT)),
+                "--out", str(prompt_path.relative_to(LOOP_ROOT)),
+            ],
+            timeout=60,
+        )
+        if not built["ok"]:
+            return jsonify({"error": f"生成 prompt 失败：{(built['stderr'] or built['stdout']).strip()[-300:]}"}), 500
+
+        evidence = _load_json(evidence_path, {})
+        return jsonify({
+            "ok": True,
+            "date": date_tag,
+            "runDir": str(run_dir.relative_to(LOOP_ROOT)),
+            "promptPath": str(prompt_path.relative_to(LOOP_ROOT)),
+            "prompt": prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "",
+            "evidenceCount": len(evidence.get("top_chunks") or []),
+            "topic": {"title": title, "keywords": keywords, "persona": persona,
+                      "framework": framework, "dimensions": dimensions},
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _fallback_md_to_html(markdown: str) -> str:
+    """上游 wechat-flow 缺失时的极简排版（标题/段落/列表/引用/图片/加粗）
+
+    只求能在预览里看清结构、能塞进公众号编辑器，不追求上游那套主题样式。
+    """
+    import html as htmllib
+    import re
+
+    def inline(text: str) -> str:
+        out = htmllib.escape(text)
+        out = re.sub(r"!\[([^\]]*)\]\(([^)]+)\)", r'<img src="\2" alt="\1" style="max-width:100%;"/>', out)
+        out = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', out)
+        out = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", out)
+        out = re.sub(r"`([^`]+)`", r'<code style="background:#f5f5f5;padding:1px 4px;border-radius:3px;">\1</code>', out)
+        return out
+
+    blocks: list[str] = []
+    list_buf: list[str] = []
+    quote_buf: list[str] = []
+
+    def flush_list() -> None:
+        if list_buf:
+            blocks.append(
+                '<ul style="margin:16px 0;padding-left:22px;line-height:1.9;">'
+                + "".join(f"<li>{inline(x)}</li>" for x in list_buf)
+                + "</ul>"
+            )
+            list_buf.clear()
+
+    def flush_quote() -> None:
+        if quote_buf:
+            blocks.append(
+                '<blockquote style="margin:16px 0;padding:10px 14px;border-left:3px solid #d0d0d0;'
+                'background:#fafafa;color:#666;line-height:1.9;">'
+                + "<br/>".join(inline(x) for x in quote_buf)
+                + "</blockquote>"
+            )
+            quote_buf.clear()
+
+    for raw in markdown.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            flush_list(); flush_quote()
+            continue
+        m = re.match(r"^(#{1,4})\s+(.*)$", stripped)
+        if m:
+            flush_list(); flush_quote()
+            level = len(m.group(1))
+            size = {1: 22, 2: 19, 3: 17, 4: 16}[level]
+            blocks.append(
+                f'<h{level} style="margin:26px 0 14px;font-size:{size}px;line-height:1.5;'
+                f'font-weight:600;">{inline(m.group(2))}</h{level}>'
+            )
+            continue
+        if re.match(r"^[-*+]\s+", stripped):
+            list_buf.append(re.sub(r"^[-*+]\s+", "", stripped))
+            continue
+        if re.match(r"^\d+[.)]\s+", stripped):
+            list_buf.append(re.sub(r"^\d+[.)]\s+", "", stripped))
+            continue
+        if stripped.startswith(">"):
+            quote_buf.append(stripped.lstrip("> ").strip())
+            continue
+        if stripped in ("---", "***", "___"):
+            flush_list(); flush_quote()
+            blocks.append('<hr style="margin:24px 0;border:none;border-top:1px solid #eee;"/>')
+            continue
+        flush_list(); flush_quote()
+        blocks.append(f'<p style="margin:16px 0;line-height:1.9;font-size:16px;">{inline(stripped)}</p>')
+    flush_list(); flush_quote()
+
+    body = "\n".join(blocks)
+    return (
+        '<section style="font-family:-apple-system,BlinkMacSystemFont,\'PingFang SC\',sans-serif;'
+        'font-size:16px;color:#333;letter-spacing:0.4px;">' + body + "</section>"
+    )
+
+
+@app.route("/api/loop/draft", methods=["POST"])
+def loop_draft():
+    """把 Markdown 存成文章并排版成公众号 HTML"""
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        markdown = body.get("markdown") or ""
+        if not markdown.strip():
+            return jsonify({"error": "正文为空，先写入 Markdown 再排版"}), 400
+
+        date_tag = body.get("date") or _today()
+        theme = body.get("theme") or "professional-clean"
+        run_dir = _safe_run_dir(date_tag)
+
+        md_path = run_dir / "article.md"
+        md_path.write_text(markdown, encoding="utf-8")
+
+        html_path = run_dir / "article.html"
+        conv = _run_script(
+            "convert_md.py",
+            [str(md_path.relative_to(LOOP_ROOT)), "--theme", theme,
+             "--out", str(html_path.relative_to(LOOP_ROOT))],
+            timeout=120,
+        )
+        fallback = False
+        if not conv["ok"] or not html_path.exists():
+            # 上游 wechat-flow/toolkit 没装时退化成内置极简排版，
+            # 保证「写完能看、能进草稿箱」，而不是直接报错卡住
+            fallback = True
+            html_path.write_text(_fallback_md_to_html(markdown), encoding="utf-8")
+
+        html = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+        return jsonify({
+            "ok": True,
+            "date": date_tag,
+            "theme": theme if not fallback else "builtin-fallback",
+            "fallback": fallback,
+            "note": "上游 wechat-flow/toolkit 未安装，已用内置极简排版" if fallback else "",
+            "mdPath": str(md_path.relative_to(LOOP_ROOT)),
+            "htmlPath": str(html_path.relative_to(LOOP_ROOT)),
+            "html": html,
+            "bytes": len(html),
+            "previewUrl": _loop_file_url(html_path),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/loop/cover", methods=["POST"])
+def loop_cover():
+    """本地生成 900x383 封面图（Pillow，零 AI 成本）"""
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        title = (body.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "缺少 title"}), 400
+
+        date_tag = body.get("date") or _today()
+        run_dir = _safe_run_dir(date_tag)
+        out = run_dir / "cover.png"
+        res = _run_script(
+            "make_cover.py",
+            ["-t", title, "-s", body.get("subtitle") or "", "-o", str(out.relative_to(LOOP_ROOT))],
+            timeout=60,
+        )
+        if not res["ok"] or not out.exists():
+            return jsonify({"error": f"生成封面失败：{(res['stderr'] or res['stdout']).strip()[-300:]}"}), 500
+        return jsonify({"ok": True, "path": str(out.relative_to(LOOP_ROOT)), "url": _loop_file_url(out)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/loop/publish", methods=["POST"])
+def loop_publish():
+    """把排版好的 HTML 发到公众号草稿箱"""
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        title = (body.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "缺少 title"}), 400
+
+        date_tag = body.get("date") or _today()
+        run_dir = _safe_run_dir(date_tag)
+        html_path = run_dir / "article.html"
+        if not html_path.exists():
+            return jsonify({"error": "还没有排版结果，请先点「排版预览」"}), 409
+
+        args = [str(html_path.relative_to(LOOP_ROOT)), "--title", title, "--json"]
+        if body.get("digest"):
+            args += ["--digest", str(body["digest"])]
+        cover = run_dir / "cover.png"
+        if cover.exists():
+            args += ["--cover", str(cover.relative_to(LOOP_ROOT))]
+        if body.get("route") in ("api", "playwright"):
+            args += ["--route", body["route"]]
+        if body.get("noHeadless"):
+            args += ["--no-headless"]
+
+        res = _run_script("publish_draft.py", args, timeout=int(body.get("timeout") or 240))
+        if not res["ok"]:
+            tail = (res["stderr"] or res["stdout"]).strip()[-600:]
+            return jsonify({"error": f"发布失败：{tail or '未知错误'}", "raw": res["stdout"][-1200:]}), 500
+
+        # publish_draft.py --json 会在 stdout 里打印一段 JSON
+        payload = {}
+        for line in reversed(res["stdout"].splitlines()):
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    payload = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+        return jsonify({"ok": True, "result": payload, "raw": res["stdout"][-1200:]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/loop/runs", methods=["GET"])
+def loop_runs():
+    """最近的工作目录（有 .prompt / article.md / article.html / cover.png 的）"""
+    from flask import jsonify
+
+    try:
+        items = []
+        if RUNS_DIR.is_dir():
+            for d in sorted((p for p in RUNS_DIR.iterdir() if p.is_dir()), reverse=True)[:30]:
+                files = {f.name: f.stat().st_size for f in d.iterdir() if f.is_file()}
+                items.append({
+                    "date": d.name,
+                    "prompt": ".prompt" in files,
+                    "markdown": "article.md" in files,
+                    "html": "article.html" in files,
+                    "cover": "cover.png" in files,
+                    "coverUrl": _loop_file_url(d / "cover.png") if (d / "cover.png").exists() else "",
+                    "htmlUrl": _loop_file_url(d / "article.html") if (d / "article.html").exists() else "",
+                    "bytes": sum(files.values()),
+                })
+        return jsonify({"items": items, "root": str(RUNS_DIR.relative_to(LOOP_ROOT))})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _loop_file_url(path: Path) -> str:
+    """把 loop/ 下的文件转成可访问 URL（base64url，避免中文路径 400）"""
+    import base64
+
+    rel = str(path.resolve().relative_to(LOOP_ROOT.resolve()))
+    return "/api/loop/file?p=" + base64.urlsafe_b64encode(rel.encode()).decode().rstrip("=")
+
+
+@app.route("/api/loop/file", methods=["GET"])
+def loop_file():
+    """读取 loop/ 目录内的文件（封面图 / 排版 HTML），防越界"""
+    import base64
+
+    from flask import Response, jsonify, request
+
+    try:
+        raw = request.args.get("p") or ""
+        if not raw:
+            return jsonify({"error": "缺少 p 参数"}), 400
+        rel = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8")
+        target = (LOOP_ROOT / rel).resolve()
+        try:
+            target.relative_to((KB_DIR).resolve())
+        except ValueError:
+            return jsonify({"error": "只能读取 loop/ 目录内的文件"}), 403
+        if not target.is_file():
+            return jsonify({"error": "文件不存在"}), 404
+
+        suffix = target.suffix.lower()
+        mime = {
+            ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".html": "text/html; charset=utf-8", ".md": "text/markdown; charset=utf-8",
+            ".json": "application/json; charset=utf-8",
+        }.get(suffix, "application/octet-stream")
+        return Response(target.read_bytes(), mimetype=mime)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 _TLS_PROBE: dict = {"ok": None, "detail": "", "checked_at": 0, "fallback_ok": None}

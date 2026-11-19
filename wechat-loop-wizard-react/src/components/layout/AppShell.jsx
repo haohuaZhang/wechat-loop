@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { key: "download",  label: "网址下载",  icon: "Download",   hint: "粘贴文章链接 · 内容过滤" },
   { key: "history",   label: "下载历史",  icon: "History",    hint: "双栏预览 · 打开 MD/PDF · RSS" },
   { key: "library",   label: "入库文章",  icon: "Library",    hint: "知识库 · 浏览搜索筛选" },
+  { key: "studio",    label: "选题与写作",icon: "PenLine",    hint: "选题 · 写作 prompt · 排版 · 草稿箱" },
   { key: "proxy",     label: "代理设置",  icon: "Globe",      hint: "单代理 · 代理池轮换 · 免费代理测活", hidden: true },
   { key: "settings",  label: "设置",      icon: "Settings",   hint: "通道、降级、诊断" },
 ]
@@ -122,6 +123,8 @@ function NavIcon({ name, className, active }) {
       return <svg {...common}><path d="M3 3v5h5" /><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" /><path d="M12 7v5l4 2" /></svg>
     case "Library":
       return <svg {...common}><path d="m16 6 4 14" /><path d="M12 6v14" /><path d="M8 8v12" /><path d="M4 4v16" /></svg>
+    case "PenLine":
+      return <svg {...common}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
     case "Globe":
       return <svg {...common}><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
     case "Settings":

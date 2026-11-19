@@ -32,9 +32,27 @@
  *   GET    /api/kb                             知识库列表
  *   POST   /api/kb                             新增知识库
  *   POST   /api/kb/active                      切换活动知识库
+ *   GET    /api/kb/articles                    检索知识库（q/account/tag/sort/limit/offset）
+ *   GET    /api/kb/article/<id>                单篇详情（含正文）
+ *   GET    /api/kb/export                      导出 md / json / zip
  */
 
 const USE_MOCK = false
+
+/**
+ * base64url 编码（不带填充）
+ *
+ * 中文直接放在 query string 里，经过 Vite dev proxy 会被当成非法请求行，
+ * 后端还没执行就 400。所有可能含中文的查询参数一律先编码成 ASCII。
+ * @param {string} s
+ * @returns {string}
+ */
+function b64url(s) {
+  const bytes = new TextEncoder().encode(s)
+  let bin = ""
+  bytes.forEach((b) => { bin += String.fromCharCode(b) })
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
 
 /**
  * 统一 fetch 封装
@@ -358,6 +376,77 @@ export const api = {
       console.warn("[api] listArticles 失败:", err.message)
       return []
     }
+  },
+
+  /**
+   * 检索知识库
+   * @param {{q?: string, account?: string, tag?: string, sort?: string, limit?: number, offset?: number}} params
+   */
+  async kbArticles(params = {}) {
+    const qs = new URLSearchParams()
+    // 中文关键词走 base64（qb/ab/tb），避免中文出现在 query string 里被代理挡掉
+    if (params.q) qs.set("qb", b64url(params.q))
+    if (params.account && params.account !== "all") qs.set("ab", b64url(params.account))
+    if (params.tag && params.tag !== "all") qs.set("tb", b64url(params.tag))
+    if (params.sort) qs.set("sort", String(params.sort))
+    if (params.limit) qs.set("limit", String(params.limit))
+    if (params.offset) qs.set("offset", String(params.offset))
+    return fetchJSON(`/api/kb/articles?${qs.toString()}`)
+  },
+
+  /**
+   * 单篇详情（含正文）
+   * @param {string} id
+   */
+  async kbArticle(id) {
+    return fetchJSON(`/api/kb/article/${encodeURIComponent(id)}`)
+  },
+
+  /**
+   * 导出下载地址（浏览器直接打开即可触发下载）
+   * @param {"md"|"json"|"zip"} format
+   * @param {{q?: string, account?: string, tag?: string}} params
+   * @returns {string}
+   */
+  kbExportUrl(format, params = {}) {
+    const qs = new URLSearchParams({ format })
+    if (params.q) qs.set("qb", b64url(params.q))
+    if (params.account && params.account !== "all") qs.set("ab", b64url(params.account))
+    if (params.tag && params.tag !== "all") qs.set("tb", b64url(params.tag))
+    return `/api/kb/export?${qs.toString()}`
+  },
+
+  /** 选题候选（后端跑 topic_selection.py） */
+  async loopTopics({ top_n = 5, min_score = 3 } = {}) {
+    return fetchJSON(`/api/loop/topics?top_n=${top_n}&min_score=${min_score}`)
+  },
+
+  /**
+   * 生成写作 prompt
+   * @param {{title: string, keywords?: string[], persona?: string, framework?: string, dimensions?: string, date?: string}} body
+   */
+  async loopPrompt(body) {
+    return fetchJSON("/api/loop/prompt", { method: "POST", body: JSON.stringify(body) })
+  },
+
+  /** Markdown → 公众号 HTML */
+  async loopDraft(body) {
+    return fetchJSON("/api/loop/draft", { method: "POST", body: JSON.stringify(body) })
+  },
+
+  /** 生成 900×383 封面 */
+  async loopCover(body) {
+    return fetchJSON("/api/loop/cover", { method: "POST", body: JSON.stringify(body) })
+  },
+
+  /** 发到公众号草稿箱 */
+  async loopPublish(body) {
+    return fetchJSON("/api/loop/publish", { method: "POST", body: JSON.stringify(body) })
+  },
+
+  /** 最近的工作目录 */
+  async loopRuns() {
+    return fetchJSON("/api/loop/runs")
   },
 
   async listKnowledgeBases() {
