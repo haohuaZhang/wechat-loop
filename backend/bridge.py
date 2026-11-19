@@ -531,10 +531,33 @@ def proxy_fetch_free():
     )
 
 
+def _selfcheck_image_tls() -> None:
+    """启动时探测微信图片 CDN，证书链有问题就当场提示，别等到看文章才发现全是空白"""
+    try:
+        import requests
+    except Exception:
+        return
+    try:
+        requests.get(
+            "https://mmbiz.qpic.cn/",
+            timeout=8,
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://mp.weixin.qq.com/"},
+        )
+        print("[bridge] 自检：微信图片 CDN 连接正常")
+    except Exception as exc:
+        name = type(exc).__name__
+        if "SSL" in name or "SSL" in str(exc) or "Certificate" in str(exc):
+            print("[bridge] ⚠ 自检失败：HTTPS 根证书缺失，正文图片会全部取不到")
+            print("[bridge]   修复：在 Finder 里打开 /Applications/Python 3.12/ 双击 Install Certificates.command")
+            print("[bridge]   （运行时已自动降级为不校验证书，图片通常仍能显示，此提示可忽略）")
+        else:
+            print(f"[bridge] 自检：微信图片 CDN 暂时连不上（{name}），不影响其它功能")
+
+
 if __name__ == "__main__":
     # 复用 wechat-mp-tools 的端口，5200
-    import os
     port = int(os.environ.get("MP_PORT", "5200"))
     print(f"[bridge] 启动 wechat-loop bridge + wechat-mp-tools 于 127.0.0.1:{port}")
     print("[bridge] 新增端点：GET /api/kb, POST /api/kb, POST /api/kb/active")
+    _selfcheck_image_tls()
     app.run(host="127.0.0.1", port=port, debug=False)
