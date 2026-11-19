@@ -584,7 +584,7 @@ export const api = {
       }
     }
     try {
-      const res = await fetchJSON("/api/articles/history")
+      const res = await fetchJSON("/api/articles/history?limit=999999")
       const items = (res.history || []).map((h) => ({
         _index: h._index ?? null,
         title: h.title || "",
@@ -592,6 +592,8 @@ export const api = {
         link: h.link || "",
         success: Boolean(h.success),
         time: Number(h.time) || 0,
+        publishAt: Number(h.publish_time) || 0,
+        cover_url: h.cover_url || "",
         path: h.path || "",
         displayPath: h.display_path || "",
         hasMarkdown: Boolean(h.has_markdown),
