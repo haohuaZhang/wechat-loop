@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { proxiedImage } from "@/lib/media"
+import { CollectJobsPanel } from "@/pages/CollectJobsPanel"
 
 /**
  * ArticlesPage —— 文章下载（严格对齐 wechat-mp-tools/frontend/js/components/articles.js v1 817 行）
@@ -729,6 +730,14 @@ export function ArticlesPage() {
         <h2 className="font-serif text-2xl font-semibold tracking-tight">文章下载</h2>
         <p className="text-sm text-muted-foreground">选择公众号，浏览并下载文章</p>
       </header>
+
+      {/* 稳定采集：批量 / 断点续采 / 失败重试 / 自动去重 */}
+      <CollectJobsPanel
+        accounts={accounts}
+        activeFakeid={activeFakeid}
+        activeName={activeName}
+        onFinished={() => loadArticles(page, true)}
+      />
 
       {/* 卡 1：公众号选择器 */}
       <Card className="bg-card">

@@ -23,6 +23,7 @@ import base64
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -864,7 +865,7 @@ def _download_image(url: str, headers: dict) -> tuple[bytes | None, str]:
 
 
 # ---- 后端自检 ----
-BRIDGE_FEATURES = ("kb", "article-html", "image-proxy", "proxy-fetch-free")
+BRIDGE_FEATURES = ("kb", "article-html", "image-proxy", "proxy-fetch-free", "collect-jobs")
 
 
 @app.route("/api/bridge/health", methods=["GET"])
@@ -893,6 +894,7 @@ def bridge_health():
         "article-html": "/api/article-html",
         "image-proxy": "/api/image-proxy",
         "proxy-fetch-free": "/api/proxy/fetch-free",
+        "collect-jobs": "/api/collect/jobs",
     }
     missing = [name for name, rule in expected.items() if rule not in rules]
     return jsonify(
@@ -1389,6 +1391,441 @@ def loop_file():
         return Response(target.read_bytes(), mimetype=mime)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────
+# 采集稳定性：任务化批量采集（断点续采 / 自动重试 / 去重）
+# ─────────────────────────────────────────────────────────────
+#
+# 上游 wechat-mp-tools 的采集本身是异步任务，但任务表只存在进程内存里，
+# 一次只能跑一个账号，重启即丢。这里在外面再包一层可以落盘的「作业」：
+#   - 串行驱动多个公众号，一个跑完再跑下一个（不并发轰炸风控）
+#   - 单个账号失败自动重试（默认 2 次，指数退避）
+#   - 每个账号的状态写进 loop/collect_jobs.json，中断后可只补没采完的号
+#   - 去重交给上游 skip_existing=true（已下载的文章不发网络请求直接跳过）
+#
+# 上游契约（本机同端口的 Flask）：
+#   POST /api/articles/collect-latest {fakeid, account_name, limit, skip_existing} -> {task_id}
+#   GET  /api/articles/download-status/<task_id> -> {status,total,completed,failed,current,...}
+#   POST /api/articles/download-cancel/<task_id>
+
+COLLECT_JOBS_FILE = KB_DIR / "collect_jobs.json"
+_collect_jobs_lock = threading.Lock()
+
+# 单账号最长等待（秒），防止上游线程卡死把作业永久占住
+_COLLECT_ACCOUNT_TIMEOUT = 60 * 30
+
+
+def _upstream_base() -> str:
+    """本机上游服务地址（bridge 与 wechat-mp-tools 同进程同端口）"""
+    port = os.environ.get("MP_PORT", "5200")
+    return f"http://127.0.0.1:{port}"
+
+
+def _upstream_error(resp) -> str:
+    try:
+        payload = resp.json() or {}
+    except Exception:
+        payload = {}
+    return payload.get("error") or payload.get("message") or f"HTTP {resp.status_code}"
+
+
+def _jobs_state() -> dict:
+    data = _load_json(COLLECT_JOBS_FILE, {"jobs": []})
+    if isinstance(data, list):  # 兼容早期直接存数组
+        data = {"jobs": data}
+    if not isinstance(data.get("jobs"), list):
+        data["jobs"] = []
+    return data
+
+
+def _save_jobs_state(state: dict) -> None:
+    # 只保留最近 20 个作业，避免文件无限增长
+    state["jobs"] = state.get("jobs", [])[:20]
+    _save_json(COLLECT_JOBS_FILE, state)
+
+
+def _find_job(state: dict, job_id: str) -> dict | None:
+    for job in state.get("jobs", []):
+        if job.get("id") == job_id:
+            return job
+    return None
+
+
+def _job_update(job_id: str, mutate) -> dict | None:
+    """在锁内读-改-写作业状态，返回快照（深拷贝，避免调用方改到缓存）"""
+    with _collect_jobs_lock:
+        state = _jobs_state()
+        job = _find_job(state, job_id)
+        if job is None:
+            return None
+        mutate(job)
+        job["updated_at"] = time.time()
+        _save_jobs_state(state)
+        return json.loads(json.dumps(job))
+
+
+def _job_snapshot(job_id: str) -> dict | None:
+    with _collect_jobs_lock:
+        state = _jobs_state()
+        job = _find_job(state, job_id)
+        return json.loads(json.dumps(job)) if job else None
+
+
+def _job_cancelled(job_id: str) -> bool:
+    job = _job_snapshot(job_id)
+    return bool(job and job.get("cancel_requested"))
+
+
+def _acc(job: dict, idx: int) -> dict:
+    accs = job.setdefault("accounts", [])
+    while len(accs) <= idx:
+        accs.append({})
+    return accs[idx]
+
+
+def _recount_job(job: dict) -> None:
+    accs = job.get("accounts", [])
+    job["completed_accounts"] = sum(1 for a in accs if a.get("status") == "completed")
+    job["failed_accounts"] = sum(1 for a in accs if a.get("status") == "failed")
+
+
+def _acc_start(job: dict, idx: int, attempts: int) -> None:
+    acc = _acc(job, idx)
+    acc["status"] = "running"
+    acc["attempts"] = attempts
+    acc.setdefault("started_at", time.time())
+    acc["stop_reason"] = ""
+    job["current_account"] = acc.get("name", "")
+
+
+def _acc_set_task(job: dict, idx: int, task_id: str) -> None:
+    acc = _acc(job, idx)
+    acc["task_id"] = task_id
+    job["current_task_id"] = task_id
+
+
+def _acc_progress(job: dict, idx: int, task: dict) -> None:
+    acc = _acc(job, idx)
+    acc["completed"] = int(task.get("completed") or 0)
+    acc["failed"] = int(task.get("failed") or 0)
+    acc["total"] = int(task.get("total") or 0)
+    acc["scanned"] = int(task.get("scanned") or 0)
+    job["current"] = task.get("current") or ""
+    job["current_account"] = acc.get("name", "")
+
+
+def _acc_finish(job: dict, idx: int, ok: bool, error: str) -> None:
+    acc = _acc(job, idx)
+    acc["status"] = "completed" if ok else "failed"
+    acc["ended_at"] = time.time()
+    if not ok:
+        acc["stop_reason"] = error or "采集失败"
+    job["current_account"] = ""
+    job["current"] = ""
+    job["current_task_id"] = ""
+    _recount_job(job)
+
+
+def _mark_job_cancelled(job: dict) -> None:
+    job["status"] = "cancelled"
+    job["cancel_requested"] = True
+    job["current"] = ""
+    job["current_account"] = ""
+    job["current_task_id"] = ""
+    job["stop_reason"] = job.get("stop_reason") or "用户取消"
+    job["ended_at"] = time.time()
+    for acc in job.get("accounts", []):
+        if acc.get("status") == "running":
+            acc["status"] = "cancelled"
+    _recount_job(job)
+
+
+def _mark_job_finished(job: dict) -> None:
+    _recount_job(job)
+    if job.get("cancel_requested"):
+        job["status"] = "cancelled"
+    elif job.get("failed_accounts"):
+        job["status"] = "partial"
+    else:
+        job["status"] = "completed"
+    job["current"] = ""
+    job["current_account"] = ""
+    job["current_task_id"] = ""
+    job["ended_at"] = time.time()
+
+
+def _upstream_collect(account: dict, limit: int) -> str:
+    import requests
+
+    resp = requests.post(
+        _upstream_base() + "/api/articles/collect-latest",
+        json={
+            "fakeid": account.get("fakeid", ""),
+            "account_name": account.get("name", ""),
+            "limit": limit,
+            "skip_existing": True,
+        },
+        timeout=20,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(_upstream_error(resp))
+    task_id = (resp.json() or {}).get("task_id", "")
+    if not task_id:
+        raise RuntimeError("上游未返回 task_id")
+    return task_id
+
+
+def _upstream_status(task_id: str) -> dict:
+    import requests
+
+    resp = requests.get(_upstream_base() + f"/api/articles/download-status/{task_id}", timeout=10)
+    if resp.status_code != 200:
+        raise RuntimeError(_upstream_error(resp))
+    return resp.json() or {}
+
+
+def _wait_upstream_task(job_id: str, idx: int, task_id: str) -> dict:
+    """轮询单个账号的采集任务，同时把进度写回作业；返回 {ok, cancelled, error}"""
+    deadline = time.time() + _COLLECT_ACCOUNT_TIMEOUT
+    while time.time() < deadline:
+        if _job_cancelled(job_id):
+            try:
+                import requests
+
+                requests.post(_upstream_base() + f"/api/articles/download-cancel/{task_id}", timeout=5)
+            except Exception:
+                pass
+            return {"ok": False, "cancelled": True, "error": "用户取消"}
+
+        try:
+            task = _upstream_status(task_id)
+        except Exception as exc:
+            return {"ok": False, "cancelled": False, "error": f"查询进度失败：{exc}"}
+
+        _job_update(job_id, lambda j, t=task: _acc_progress(j, idx, t))
+
+        status = task.get("status")
+        if status == "completed":
+            # 上游把「列表都没拉到」也当成功结束（total=0），这里必须自己判一次：
+            # 已下载的文章会被计入 total（只是被跳过），所以 total=0 只可能是
+            # 凭证失效 / 公众号不可访问 / 列表请求失败，按失败处理才不会被误报成采集成功。
+            if int(task.get("total") or 0) == 0:
+                return {
+                    "ok": False,
+                    "cancelled": False,
+                    "error": "没有取到任何文章（可能凭证失效、公众号不可访问或列表请求失败）",
+                }
+            return {"ok": True, "cancelled": False, "error": ""}
+        if status == "failed":
+            return {"ok": False, "cancelled": False, "error": task.get("stop_reason") or "上游采集失败"}
+        if status == "cancelled":
+            return {"ok": False, "cancelled": True, "error": task.get("stop_reason") or "上游已取消"}
+
+        time.sleep(2.0)
+
+    return {"ok": False, "cancelled": False, "error": "单个账号采集超时（30 分钟）"}
+
+
+def _collect_job_worker(job_id: str) -> None:
+    job = _job_update(job_id, lambda j: j.update(status="running", current="准备采集..."))
+    if not job:
+        return
+    limit = int(job.get("limit") or 50)
+    retries = max(0, int(job.get("retries") or 0))
+    accounts = job.get("accounts", [])
+
+    try:
+        for idx, acc in enumerate(accounts):
+            if acc.get("status") == "completed":
+                continue
+            if _job_cancelled(job_id):
+                _job_update(job_id, _mark_job_cancelled)
+                return
+
+            attempts = 0
+            ok = False
+            last_error = ""
+            while attempts <= retries:
+                if _job_cancelled(job_id):
+                    _job_update(job_id, _mark_job_cancelled)
+                    return
+                attempts += 1
+                _job_update(job_id, lambda j, i=idx, a=attempts: _acc_start(j, i, a))
+                try:
+                    task_id = _upstream_collect(acc, limit)
+                    _job_update(job_id, lambda j, i=idx, t=task_id: _acc_set_task(j, i, t))
+                    result = _wait_upstream_task(job_id, idx, task_id)
+                    if result["ok"]:
+                        ok = True
+                        break
+                    last_error = result["error"]
+                    if result["cancelled"]:
+                        _job_update(job_id, _mark_job_cancelled)
+                        return
+                except Exception as exc:
+                    last_error = f"{type(exc).__name__}: {exc}"
+
+                if attempts <= retries:
+                    # 指数退避，最多 8 秒，给上游 / 风控一点冷却
+                    time.sleep(min(3.0 * attempts, 8.0))
+
+            _job_update(job_id, lambda j, i=idx, o=ok, e=last_error: _acc_finish(j, i, o, e))
+
+        _job_update(job_id, _mark_job_finished)
+    except Exception as exc:
+        _job_update(job_id, lambda j: j.update(
+            status="failed", current="", stop_reason=str(exc), ended_at=time.time()
+        ))
+
+
+@app.route("/api/collect/jobs", methods=["GET"])
+def collect_jobs_list():
+    """采集作业列表（含每个账号的进度，供前端轮询）"""
+    from flask import jsonify
+
+    with _collect_jobs_lock:
+        state = _jobs_state()
+        return jsonify({"jobs": state.get("jobs", [])})
+
+
+@app.route("/api/collect/jobs/<job_id>", methods=["GET"])
+def collect_job_detail(job_id: str):
+    from flask import jsonify
+
+    job = _job_snapshot(job_id)
+    if not job:
+        return jsonify({"error": "作业不存在"}), 404
+    return jsonify({"job": job})
+
+
+@app.route("/api/collect/jobs", methods=["POST"])
+def collect_jobs_create():
+    """创建采集作业：按账号串行采集，失败重试，状态落盘可续采"""
+    from flask import jsonify, request
+
+    data = request.get_json(silent=True) or {}
+
+    raw_accounts = data.get("accounts") or []
+    accounts = []
+    seen = set()
+    for item in raw_accounts:
+        if not isinstance(item, dict):
+            continue
+        fakeid = str(item.get("fakeid") or "").strip()
+        if not fakeid or fakeid in seen:
+            continue
+        seen.add(fakeid)
+        accounts.append({
+            "fakeid": fakeid,
+            "name": str(item.get("name") or "").strip() or fakeid,
+            "status": "pending",
+            "task_id": "",
+            "attempts": 0,
+            "completed": 0,
+            "failed": 0,
+            "total": 0,
+            "scanned": 0,
+            "stop_reason": "",
+        })
+    if not accounts:
+        return jsonify({"error": "请先选择要采集的公众号"}), 400
+
+    try:
+        limit = max(1, min(200, int(data.get("limit") or 50)))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        retries = data.get("retries")
+        retries = 2 if retries is None else max(0, min(5, int(retries)))
+    except (TypeError, ValueError):
+        retries = 2
+
+    with _collect_jobs_lock:
+        state = _jobs_state()
+        running = [j for j in state.get("jobs", []) if j.get("status") == "running"]
+        if running:
+            return jsonify({"error": "已有采集作业在运行，请等它结束或先取消"}), 409
+
+        job = {
+            "id": f"job_{time.strftime('%Y%m%d_%H%M%S')}_{os.urandom(2).hex()}",
+            "created_at": time.time(),
+            "updated_at": time.time(),
+            "status": "pending",
+            "limit": limit,
+            "retries": retries,
+            "total_accounts": len(accounts),
+            "completed_accounts": 0,
+            "failed_accounts": 0,
+            "current": "",
+            "current_account": "",
+            "current_task_id": "",
+            "cancel_requested": False,
+            "stop_reason": "",
+            "accounts": accounts,
+        }
+        state.setdefault("jobs", []).insert(0, job)
+        _save_jobs_state(state)
+
+    threading.Thread(target=_collect_job_worker, args=(job["id"],), daemon=True).start()
+    return jsonify({"job": job})
+
+
+@app.route("/api/collect/jobs/<job_id>/cancel", methods=["POST"])
+def collect_job_cancel(job_id: str):
+    """请求取消作业：置标志位，后台线程会停掉上游任务并收尾"""
+    from flask import jsonify
+
+    def set_cancel(job):
+        if job.get("status") in ("completed", "partial", "failed", "cancelled"):
+            return
+        job["cancel_requested"] = True
+        job["status"] = "cancelling"
+        job["stop_reason"] = "用户请求停止"
+
+    job = _job_update(job_id, set_cancel)
+    if not job:
+        return jsonify({"error": "作业不存在"}), 404
+    return jsonify({"job": job})
+
+
+@app.route("/api/collect/jobs/<job_id>/resume", methods=["POST"])
+def collect_job_resume(job_id: str):
+    """断点续采：把未完成的账号重置为等待，重新起线程（已完成的号直接跳过）"""
+    from flask import jsonify
+
+    with _collect_jobs_lock:
+        state = _jobs_state()
+        job = _find_job(state, job_id)
+        if not job:
+            return jsonify({"error": "作业不存在"}), 404
+        if job.get("status") == "running":
+            return jsonify({"error": "作业正在运行中"}), 409
+        if any(j.get("status") == "running" and j.get("id") != job_id for j in state.get("jobs", [])):
+            return jsonify({"error": "已有其它采集作业在运行"}), 409
+
+        pending = 0
+        for acc in job.get("accounts", []):
+            if acc.get("status") != "completed":
+                acc["status"] = "pending"
+                acc["stop_reason"] = ""
+                pending += 1
+        if not pending:
+            return jsonify({"error": "该作业的公众号都已采集完成，无需续采"}), 400
+
+        job["status"] = "pending"
+        job["cancel_requested"] = False
+        job["stop_reason"] = ""
+        job["ended_at"] = None
+        job["current"] = ""
+        job["current_account"] = ""
+        job["current_task_id"] = ""
+        job["updated_at"] = time.time()
+        _save_jobs_state(state)
+        snapshot = json.loads(json.dumps(job))
+
+    threading.Thread(target=_collect_job_worker, args=(job_id,), daemon=True).start()
+    return jsonify({"job": snapshot})
 
 
 _TLS_PROBE: dict = {"ok": None, "detail": "", "checked_at": 0, "fallback_ok": None}

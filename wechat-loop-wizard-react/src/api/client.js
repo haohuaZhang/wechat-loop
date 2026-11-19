@@ -1492,6 +1492,64 @@ export const api = {
   },
 
   /**
+   * 采集作业列表（持久化的批量采集，可断点续采）
+   * GET /api/collect/jobs
+   */
+  async collectJobs() {
+    if (USE_MOCK) return { jobs: [] }
+    try {
+      return await fetchJSON("/api/collect/jobs")
+    } catch (err) {
+      throw toError(err, "读取采集作业失败")
+    }
+  },
+
+  /**
+   * 创建采集作业：按账号串行 + 失败重试 + 去重
+   * POST /api/collect/jobs  body: { accounts:[{fakeid,name}], limit, retries }
+   */
+  async createCollectJob({ accounts = [], limit = 50, retries = 2 } = {}) {
+    if (!accounts.length) throw new Error("请至少选择一个公众号")
+    if (USE_MOCK) return { job: { id: "job_demo", status: "running", accounts: [] } }
+    try {
+      return await fetchJSON("/api/collect/jobs", {
+        method: "POST",
+        body: JSON.stringify({ accounts, limit, retries }),
+      })
+    } catch (err) {
+      throw toError(err, "创建采集作业失败")
+    }
+  },
+
+  /**
+   * 取消采集作业
+   * POST /api/collect/jobs/<id>/cancel
+   */
+  async cancelCollectJob(jobId) {
+    if (!jobId) throw new Error("缺少作业 ID")
+    if (USE_MOCK) return { ok: true }
+    try {
+      return await fetchJSON(`/api/collect/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" })
+    } catch (err) {
+      throw toError(err, "取消采集作业失败")
+    }
+  },
+
+  /**
+   * 断点续采：只补没采完的公众号
+   * POST /api/collect/jobs/<id>/resume
+   */
+  async resumeCollectJob(jobId) {
+    if (!jobId) throw new Error("缺少作业 ID")
+    if (USE_MOCK) return { ok: true }
+    try {
+      return await fetchJSON(`/api/collect/jobs/${encodeURIComponent(jobId)}/resume`, { method: "POST" })
+    } catch (err) {
+      throw toError(err, "续采失败")
+    }
+  },
+
+  /**
    * 按时间范围批量下载
    * POST /api/articles/download-range
    * 返回 { taskId, message }
