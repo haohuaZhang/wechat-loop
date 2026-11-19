@@ -131,9 +131,13 @@ function normalizeSummary(raw = {}) {
 }
 
 function normalizeAccount(raw = {}) {
+  const fakeid = raw.fakeid || raw.fake_id || raw.biz || raw.id || ""
+  const bookId = raw.bookId || raw.book_id || ""
   return {
-    fakeid: raw.fakeid || "",
-    bookId: raw.bookId || "",
+    // 老版本收藏记录可能只有 bookId，这里用它兜底；
+    // 上游 biz_to_book_id 对 MP_ 开头的 id 会原样返回，可直接当 fakeid 用
+    fakeid: fakeid || bookId,
+    bookId: bookId || fakeid,
     nickname: raw.nickname || raw.alias || "未命名公众号",
     avatar: raw.round_head_img || raw.avatar || "",
     signature: raw.signature || "",
@@ -1001,14 +1005,14 @@ export const api = {
 
   /**
    * 停止下载任务
-   * POST /api/articles/download-cancel  body: { task_id }
+   * POST /api/articles/download-cancel/<taskId>
    * @param {string} taskId
    */
   async cancelDownload(taskId) {
     if (!taskId) throw new Error("缺少 taskId")
     if (USE_MOCK) { await delay(100); return { ok: true, message: "已请求停止" } }
     try {
-      return await fetchJSON("/api/articles/download-cancel", {
+      return await fetchJSON(`/api/articles/download-cancel/${encodeURIComponent(taskId)}`, {
         method: "POST",
         body: JSON.stringify({ task_id: taskId }),
       })
@@ -1174,7 +1178,7 @@ export const api = {
 
   /**
    * 按时间范围批量下载
-   * POST /api/articles/download-date-range
+   * POST /api/articles/download-range
    * 返回 { taskId, message }
    * @param {{fakeid: string, account_name?: string, start_time: number, end_time: number, keyword?: string, page_size?: number}} payload
    */
@@ -1186,7 +1190,7 @@ export const api = {
       return { taskId: `dl_range_${Date.now()}`, message: "已启动按时间范围下载" }
     }
     try {
-      const res = await fetchJSON("/api/articles/download-date-range", {
+      const res = await fetchJSON("/api/articles/download-range", {
         method: "POST",
         body: JSON.stringify({ fakeid, account_name, start_time, end_time, keyword, page_size }),
       })

@@ -753,9 +753,15 @@ export function ArticlesPage() {
                 const active = activeFakeid === acc.fakeid
                 return (
                   <button
-                    key={acc.fakeid}
+                    key={acc.fakeid || acc.nickname}
                     type="button"
-                    onClick={() => handleSelectAccount(acc.fakeid, acc.nickname)}
+                    onClick={() => {
+                      if (!acc.fakeid) {
+                        showToast("该公众号缺少 fakeid，请删除后重新收藏")
+                        return
+                      }
+                      handleSelectAccount(acc.fakeid, acc.nickname)
+                    }}
                     className={cn(
                       "h-8 rounded-md border px-3 text-xs transition-colors",
                       active
