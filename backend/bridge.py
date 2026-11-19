@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 # 把 wechat-mp-tools 加入 sys.path —— 不修改上游源码
@@ -364,6 +365,124 @@ def image_proxy():
         pass  # 缓存失败不影响返回
 
     return Response(data, mimetype=ctype, headers={"Cache-Control": "public, max-age=604800"})
+
+
+# ---- 后端自检 ----
+BRIDGE_FEATURES = ("kb", "article-html", "image-proxy", "proxy-fetch-free")
+
+
+@app.route("/api/bridge/health", methods=["GET"])
+def bridge_health():
+    """判断后端是否已经重启到最新代码：前端据此提示「需重启后端」"""
+    import subprocess
+
+    from flask import jsonify
+
+    rev = ""
+    try:
+        rev = (
+            subprocess.run(
+                ["git", "-C", str(Path(__file__).resolve().parent.parent), "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            ).stdout.strip()
+        )
+    except Exception:
+        rev = ""
+
+    rules = {str(r) for r in app.url_map.iter_rules()}
+    expected = {
+        "kb": "/api/kb",
+        "article-html": "/api/article-html",
+        "image-proxy": "/api/image-proxy",
+        "proxy-fetch-free": "/api/proxy/fetch-free",
+    }
+    missing = [name for name, rule in expected.items() if rule not in rules]
+    return jsonify({"ok": not missing, "revision": rev, "features": list(BRIDGE_FEATURES), "missing": missing})
+
+
+# ---- 免费代理抓取 ----
+FREE_PROXY_SOURCES = (
+    # 都是公开维护的免费代理清单，格式为 host:port 纯文本
+    "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+    "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=yes&anonymity=all",
+)
+
+
+@app.route("/api/proxy/fetch-free", methods=["POST"])
+def proxy_fetch_free():
+    """从公开清单抓一批免费代理，逐个测活后只返回可用的
+
+    免费代理生命周期通常只有几小时到几天，失效是常态，
+    所以这里做成「现抓现测」，而不是提前存一份死的清单。
+    """
+    import concurrent.futures
+
+    import requests
+    from flask import jsonify, request
+
+    limit = int((request.get_json(silent=True) or {}).get("limit") or 40)
+    candidates: list[dict] = []
+    errors: list[str] = []
+
+    for src in FREE_PROXY_SOURCES:
+        try:
+            resp = requests.get(src, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or ":" not in line:
+                    continue
+                host, _, port = line.rpartition(":")
+                if not host or not port.isdigit():
+                    continue
+                candidates.append({"type": "http", "host": host.strip(), "port": port})
+        except Exception as exc:
+            errors.append(f"{src.split('/')[2]}: {exc}")
+
+    # 去重后只测前 limit 个，避免一次开几百个连接
+    seen, picked = set(), []
+    for item in candidates:
+        key = f"{item['host']}:{item['port']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        picked.append(item)
+        if len(picked) >= limit:
+            break
+
+    def probe(item: dict) -> dict | None:
+        url = f"http://{item['host']}:{item['port']}"
+        try:
+            start = time.time()
+            resp = requests.get(
+                "https://api.ipify.org?format=json",
+                proxies={"http": url, "https": url},
+                timeout=6,
+            )
+            resp.raise_for_status()
+            ip = (resp.json() or {}).get("ip", "")
+            return {**item, "latency": round((time.time() - start) * 1000), "exit_ip": ip}
+        except Exception:
+            return None
+
+    alive: list[dict] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+        for result in pool.map(probe, picked):
+            if result:
+                alive.append(result)
+
+    alive.sort(key=lambda x: x["latency"])
+    return jsonify(
+        {
+            "total_scanned": len(picked),
+            "alive": alive,
+            "message": f"抓取 {len(picked)} 个，可用 {len(alive)} 个",
+            "errors": errors,
+        }
+    )
 
 
 if __name__ == "__main__":

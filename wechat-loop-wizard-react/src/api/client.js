@@ -764,6 +764,131 @@ export const api = {
   },
 
   /**
+   * 后端自检：是否已重启到最新代码（缺哪些路由）
+   * GET /api/bridge/health
+   */
+  async getBridgeHealth() {
+    if (USE_MOCK) return { ok: true, revision: "mock", features: [], missing: [] }
+    const res = await fetchJSON("/api/bridge/health")
+    return {
+      ok: !!res?.ok,
+      revision: res?.revision || "",
+      features: res?.features || [],
+      missing: res?.missing || [],
+    }
+  },
+
+  /**
+   * 读取单代理配置
+   * GET /api/proxy/config
+   */
+  async getProxyConfig() {
+    if (USE_MOCK) return {}
+    try {
+      return await fetchJSON("/api/proxy/config")
+    } catch (err) {
+      throw toError(err, "读取代理配置失败")
+    }
+  },
+
+  /**
+   * 保存单代理配置
+   * POST /api/proxy/config
+   * @param {object} config
+   */
+  async saveProxyConfig(config) {
+    if (USE_MOCK) return { message: "ok" }
+    try {
+      return await fetchJSON("/api/proxy/config", {
+        method: "POST",
+        body: JSON.stringify(config),
+      })
+    } catch (err) {
+      throw toError(err, "保存代理配置失败")
+    }
+  },
+
+  /**
+   * 测试代理连通性
+   * POST /api/proxy/test
+   * @param {object} config
+   */
+  async testProxy(config) {
+    if (USE_MOCK) return { success: true, message: "模拟测试成功", latency: 120 }
+    try {
+      return await fetchJSON("/api/proxy/test", {
+        method: "POST",
+        body: JSON.stringify(config),
+      })
+    } catch (err) {
+      throw toError(err, "测试代理失败")
+    }
+  },
+
+  /**
+   * 读取代理池
+   * GET /api/proxy/pool
+   */
+  async getProxyPool() {
+    if (USE_MOCK) return { pool: [], total: 0 }
+    try {
+      const res = await fetchJSON("/api/proxy/pool")
+      return { pool: res?.pool || [], total: res?.total || 0 }
+    } catch (err) {
+      throw toError(err, "读取代理池失败")
+    }
+  },
+
+  /**
+   * 添加代理到代理池
+   * POST /api/proxy/pool
+   * @param {{type?: string, host: string, port: string, username?: string, password?: string, label?: string}} item
+   */
+  async addProxyToPool(item) {
+    if (!item?.host) throw new Error("代理地址不能为空")
+    if (USE_MOCK) return { message: "ok" }
+    try {
+      return await fetchJSON("/api/proxy/pool", {
+        method: "POST",
+        body: JSON.stringify(item),
+      })
+    } catch (err) {
+      throw toError(err, "添加代理失败")
+    }
+  },
+
+  /**
+   * 从代理池移除（按索引）
+   * DELETE /api/proxy/pool/<index>
+   * @param {number} index
+   */
+  async removeProxyFromPool(index) {
+    if (USE_MOCK) return { message: "ok" }
+    try {
+      return await fetchJSON(`/api/proxy/pool/${index}`, { method: "DELETE" })
+    } catch (err) {
+      throw toError(err, "移除代理失败")
+    }
+  },
+
+  /**
+   * 抓取公开免费代理并测活（只返回可用的）
+   * POST /api/proxy/fetch-free  body: { limit }
+   * @param {number} limit
+   */
+  async fetchFreeProxies(limit = 40) {
+    if (USE_MOCK) return { total_scanned: 0, alive: [], message: "模拟模式" }
+    try {
+      return await fetchJSON("/api/proxy/fetch-free", {
+        method: "POST",
+        body: JSON.stringify({ limit }),
+      })
+    } catch (err) {
+      throw toError(err, "抓取免费代理失败")
+    }
+  },
+
+  /**
    * RSS 订阅状态
    * GET /api/accounts/rss-subscriptions
    * 返回 { subscriptions: [{fakeid, enabled, interval_minutes, last_fetch_time, ...}] }
