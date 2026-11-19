@@ -226,11 +226,20 @@ def article_html():
         imgs = re.findall(r"<img\b[^>]*>", text, flags=re.IGNORECASE)
         srcs = re.findall(r'\b(?:data-src|src)\s*=\s*["\']([^"\']+)["\']', " ".join(imgs), flags=re.I)
         hosts = Counter()
+        placeholder_only = 0
+        no_url = 0
+        for tag in imgs:
+            urls = re.findall(r'\b(?:data-src|src)\s*=\s*["\']([^"\']+)["\']', tag, flags=re.I)
+            real = [u for u in urls if not u.startswith("data:")]
+            if not urls:
+                no_url += 1
+            elif not real:
+                placeholder_only += 1
         for s in srcs:
             if s.startswith(("http", "//")):
                 hosts[urlparse(s if s.startswith("http") else "https:" + s).hostname or "?"] += 1
-            else:
-                hosts[f"<相对路径>"] += 1
+            elif not s.startswith("data:"):
+                hosts["<相对路径>"] += 1
         return jsonify(
             {
                 "file": str(target),
@@ -239,6 +248,8 @@ def article_html():
                 "img_urls_sample": srcs[:5],
                 "img_urls_remote": sum(1 for s in srcs if s.startswith(("http", "//"))),
                 "img_urls_relative": sum(1 for s in srcs if not s.startswith(("http", "//", "data:"))),
+                "img_placeholder_only": placeholder_only,
+                "img_without_url": no_url,
                 "img_hosts": dict(hosts.most_common(8)),
                 "iframe_count": len(re.findall(r"<iframe\b", text, flags=re.I)),
                 "video_tag_count": len(re.findall(r"<video\b", text, flags=re.I)),

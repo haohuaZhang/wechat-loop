@@ -136,6 +136,12 @@ function DiagPanel({ diag, onClose }) {
   if (d.img_urls_relative > 0) {
     verdicts.push(["warn", `有 ${d.img_urls_relative} 张是相对路径图片：需要后端重启到最新版才支持。`])
   }
+  if (d.img_placeholder_only > 0) {
+    verdicts.push(["error", `有 ${d.img_placeholder_only} 张只剩占位图（data: 开头），没有真实地址：微信懒加载没被触发，必须重新下载这篇文章。`])
+  }
+  if (d.img_without_url > 0) {
+    verdicts.push(["error", `有 ${d.img_without_url} 个 img 标签完全没有任何地址，属于下载残缺，需重新下载。`])
+  }
   if (otherHosts.length) {
     verdicts.push(["warn", `以下域名不在代理白名单，需加白：${otherHosts.join("、")}`])
   }
