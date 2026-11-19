@@ -220,9 +220,17 @@ def article_html():
     # ?inspect=1 —— 排查用：正文文件里到底有没有图/视频，一眼看清
     if request.args.get("inspect"):
         import re
+        from collections import Counter
+        from urllib.parse import urlparse
 
         imgs = re.findall(r"<img\b[^>]*>", text, flags=re.IGNORECASE)
         srcs = re.findall(r'\b(?:data-src|src)\s*=\s*["\']([^"\']+)["\']', " ".join(imgs), flags=re.I)
+        hosts = Counter()
+        for s in srcs:
+            if s.startswith(("http", "//")):
+                hosts[urlparse(s if s.startswith("http") else "https:" + s).hostname or "?"] += 1
+            else:
+                hosts[f"<相对路径>"] += 1
         return jsonify(
             {
                 "file": str(target),
@@ -230,6 +238,8 @@ def article_html():
                 "img_tags": len(imgs),
                 "img_urls_sample": srcs[:5],
                 "img_urls_remote": sum(1 for s in srcs if s.startswith(("http", "//"))),
+                "img_urls_relative": sum(1 for s in srcs if not s.startswith(("http", "//", "data:"))),
+                "img_hosts": dict(hosts.most_common(8)),
                 "iframe_count": len(re.findall(r"<iframe\b", text, flags=re.I)),
                 "video_tag_count": len(re.findall(r"<video\b", text, flags=re.I)),
                 "has_js_content": 'id="js_content"' in text or "id='js_content'" in text,
@@ -239,8 +249,78 @@ def article_html():
         )
 
     return Response(
-        _rewrite_media_urls(text),
+        _rewrite_media_urls(_rewrite_local_assets(text, target.parent)),
         mimetype="text/html",
+    )
+
+
+# ---- 正文里的本地图片 ----
+# 有些下载器会把图片存到正文同级目录，HTML 里写成 ./images/x.png。
+# 预览时 base 是站点根，这类相对路径必然 404，所以改成本机静态接口。
+ASSET_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg")
+
+
+def _rewrite_local_assets(html: str, base_dir) -> str:
+    import re
+    from urllib.parse import quote
+
+    p_b64 = _b64url(str(base_dir))
+
+    def to_asset(url: str) -> str | None:
+        rel = url.strip()
+        if not rel or rel.startswith(("http", "//", "/", "#", "data:", "mailto:", "javascript:")):
+            return None
+        if not rel.lower().split("?")[0].endswith(ASSET_EXTS):
+            return None
+        return f"/api/article-asset?p={p_b64}&f={quote(rel, safe='')}"
+
+    def repl(m: "re.Match") -> str:
+        asset = to_asset(m.group(3))
+        if not asset:
+            return m.group(0)
+        q = m.group(2)
+        return f"{m.group(1)}{q}{asset}{q}"
+
+    return re.sub(
+        r"((?<![-\w])(?:src|data-src|poster)\s*=\s*)([\"'])([^\"']+)\2",
+        repl,
+        html,
+        flags=re.IGNORECASE,
+    )
+
+
+@app.route("/api/article-asset", methods=["GET"])
+def article_asset():
+    """返回正文目录下的本地图片（相对路径图片用）"""
+    import base64
+    import mimetypes
+    from pathlib import Path
+
+    from flask import Response, jsonify, request
+
+    p = request.args.get("p", "")
+    rel = request.args.get("f", "")
+    if not p or not rel:
+        return jsonify({"error": "缺少 p 或 f 参数"}), 400
+    try:
+        base = Path(
+            base64.b64decode(p + "=" * (-len(p) % 4), altchars=b"-_", validate=True).decode("utf-8")
+        ).resolve()
+        target = (base / rel).resolve()
+    except Exception:
+        return jsonify({"error": "参数不合法"}), 400
+
+    if not target.is_relative_to(base):
+        return jsonify({"error": "越界路径"}), 403
+    if not target.is_file():
+        return jsonify({"error": "文件不存在"}), 404
+    if target.suffix.lower() not in ASSET_EXTS:
+        return jsonify({"error": "只提供图片文件"}), 403
+
+    return Response(
+        target.read_bytes(),
+        mimetype=mimetypes.guess_type(str(target))[0] or "application/octet-stream",
+        headers={"Cache-Control": "public, max-age=604800"},
     )
 
 
