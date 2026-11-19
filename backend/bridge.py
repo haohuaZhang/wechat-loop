@@ -215,8 +215,31 @@ def article_html():
     if not target.is_file():
         return jsonify({"error": "文件不存在"}), 404
 
+    text = target.read_text(encoding="utf-8", errors="ignore")
+
+    # ?inspect=1 —— 排查用：正文文件里到底有没有图/视频，一眼看清
+    if request.args.get("inspect"):
+        import re
+
+        imgs = re.findall(r"<img\b[^>]*>", text, flags=re.IGNORECASE)
+        srcs = re.findall(r'\b(?:data-src|src)\s*=\s*["\']([^"\']+)["\']', " ".join(imgs), flags=re.I)
+        return jsonify(
+            {
+                "file": str(target),
+                "bytes": len(text.encode("utf-8")),
+                "img_tags": len(imgs),
+                "img_urls_sample": srcs[:5],
+                "img_urls_remote": sum(1 for s in srcs if s.startswith(("http", "//"))),
+                "iframe_count": len(re.findall(r"<iframe\b", text, flags=re.I)),
+                "video_tag_count": len(re.findall(r"<video\b", text, flags=re.I)),
+                "has_js_content": 'id="js_content"' in text or "id='js_content'" in text,
+                "hidden_visibility": "visibility: hidden" in text.replace(" ", " ")
+                or "visibility:hidden" in text,
+            }
+        )
+
     return Response(
-        _rewrite_media_urls(target.read_text(encoding="utf-8", errors="ignore")),
+        _rewrite_media_urls(text),
         mimetype="text/html",
     )
 
@@ -344,7 +367,56 @@ def _rewrite_media_urls(html: str) -> str:
         html,
         flags=re.IGNORECASE,
     )
-    return html
+
+    # 视频：微信视频是 <iframe class="video_iframe" data-src="https://mp.weixin.qq.com/mp/videoplayer?...">
+    # 这个播放器依赖登录态与 referer，嵌在本地页面里必然是空白。
+    # 换成可点击的提示块，点开去原文放。
+    def repl_video_iframe(m: "re.Match") -> str:
+        tag = m.group(0)
+        url = ""
+        for attr in ("data-src", "src"):
+            found = re.search(r"\b" + attr + r'\s*=\s*(["\'])(.*?)\1', tag, re.IGNORECASE | re.DOTALL)
+            if found and found.group(2).startswith("http"):
+                url = found.group(2)
+                break
+        if url:
+            return (
+                '<div class="loop-video-fallback">🎬 视频无法在预览里播放，'
+                f'<a href="{url}" target="_blank" rel="noreferrer">点此打开播放页</a></div>'
+            )
+        return '<div class="loop-video-fallback">🎬 该视频需在原文中播放</div>'
+
+    html = re.sub(
+        r"<iframe\b[^>]*(?:video_iframe|video-player)[^>]*>(?:\s*</iframe>)?",
+        repl_video_iframe,
+        html,
+        flags=re.IGNORECASE,
+    )
+
+    if "</body>" in html.lower():
+        idx = html.lower().rfind("</body>")
+        return html[:idx] + LOOP_MEDIA_FIX_CSS + html[idx:]
+    return html + LOOP_MEDIA_FIX_CSS
+
+
+# 公众号正文保存下来时带 rich_media_content 的 visibility:hidden，
+# 靠页面自己的 JS 才显示。预览里没有那套 JS，内容会整片空白，所以强制可见。
+LOOP_MEDIA_FIX_CSS = """
+<style id="loop-media-fix">
+  #js_content, .rich_media_content, .rich_media_area_primary,
+  .rich_media_inner, .rich_media_wrp {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  img { visibility: visible !important; opacity: 1 !important; max-width: 100% !important; height: auto !important; }
+  .loop-video-fallback {
+    margin: 16px 0; padding: 14px 16px; border: 1px dashed #d4d4d8;
+    border-radius: 6px; background: #fafafa; text-align: center;
+    font-size: 14px; color: #52525b;
+  }
+  .loop-video-fallback a { color: #1677ff; text-decoration: none; }
+</style>
+"""
 
 
 @app.route("/api/image-proxy", methods=["GET"])
