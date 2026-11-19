@@ -565,7 +565,15 @@ def bridge_health():
         "proxy-fetch-free": "/api/proxy/fetch-free",
     }
     missing = [name for name, rule in expected.items() if rule not in rules]
-    return jsonify({"ok": not missing, "revision": rev, "features": list(BRIDGE_FEATURES), "missing": missing})
+    return jsonify(
+        {
+            "ok": not missing,
+            "revision": rev,
+            "features": list(BRIDGE_FEATURES),
+            "missing": missing,
+            "tls": _probe_image_tls(),
+        }
+    )
 
 
 # ---- 免费代理抓取 ----
@@ -651,27 +659,59 @@ def proxy_fetch_free():
     )
 
 
-def _selfcheck_image_tls() -> None:
-    """启动时探测微信图片 CDN，证书链有问题就当场提示，别等到看文章才发现全是空白"""
+_TLS_PROBE: dict = {"ok": None, "detail": "", "checked_at": 0, "fallback_ok": None}
+
+
+def _probe_image_tls(force: bool = False) -> dict:
+    """探测微信图片 CDN 的 HTTPS 是否可用，结果缓存给 /api/bridge/health 复用
+
+    分三种情况说清楚：
+      ok=True  —— 校验证书就能取图，最健康
+      ok=False + fallback_ok=True —— 根证书缺失，但不校验能取到（图片仍显示）
+      ok=False + fallback_ok=False —— 真的连不上（网络 / 被墙 / 代理不通）
+    """
+    if not force and _TLS_PROBE["checked_at"]:
+        return {k: _TLS_PROBE[k] for k in ("ok", "detail", "fallback_ok", "checked_at")}
+
     try:
         import requests
     except Exception:
-        return
-    try:
-        requests.get(
-            "https://mmbiz.qpic.cn/",
-            timeout=8,
-            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://mp.weixin.qq.com/"},
-        )
-        print("[bridge] 自检：微信图片 CDN 连接正常")
-    except Exception as exc:
-        name = type(exc).__name__
-        if "SSL" in name or "SSL" in str(exc) or "Certificate" in str(exc):
-            print("[bridge] ⚠ 自检失败：HTTPS 根证书缺失，正文图片会全部取不到")
-            print("[bridge]   修复：在 Finder 里打开 /Applications/Python 3.12/ 双击 Install Certificates.command")
-            print("[bridge]   （运行时已自动降级为不校验证书，图片通常仍能显示，此提示可忽略）")
-        else:
-            print(f"[bridge] 自检：微信图片 CDN 暂时连不上（{name}），不影响其它功能")
+        _TLS_PROBE.update(ok=None, detail="未安装 requests，跳过探测", checked_at=time.time())
+        return dict(_TLS_PROBE)
+
+    url = "https://mmbiz.qpic.cn/"
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://mp.weixin.qq.com/"}
+
+    def try_get(verify: bool) -> tuple[bool, str]:
+        try:
+            requests.get(url, timeout=8, headers=headers, verify=verify)
+            return True, ""
+        except Exception as exc:
+            return False, f"{type(exc).__name__}: {str(exc)[:160]}"
+
+    ok, detail = try_get(True)
+    fallback_ok = None
+    if not ok:
+        fallback_ok, _ = try_get(False)
+
+    _TLS_PROBE.update(ok=ok, detail=detail, fallback_ok=fallback_ok, checked_at=time.time())
+    return dict(_TLS_PROBE)
+
+
+def _print_tls_report() -> None:
+    res = _probe_image_tls(force=True)
+    ok, fallback_ok = res.get("ok"), res.get("fallback_ok")
+    if ok:
+        print("[bridge] 证书自检：OK —— HTTPS 取图正常（证书校验通过）")
+    elif fallback_ok:
+        print("[bridge] 证书自检：WARN —— 根证书缺失，取图会走「不校验证书」的降级通道")
+        print("[bridge]   图片仍能显示，但建议修一次：Finder 打开 /Applications/Python 3.12/")
+        print("[bridge]   双击 Install Certificates.command，之后重启后端即可")
+        print(f"[bridge]   详情：{res.get('detail', '')}")
+    else:
+        print("[bridge] 证书自检：FAIL —— 连不上 mmbiz.qpic.cn，正文图片会全部显示占位块")
+        print("[bridge]   排查：本机网络 / 代理设置 / 是否需要梯子")
+        print(f"[bridge]   详情：{res.get('detail', '')}")
 
 
 if __name__ == "__main__":
@@ -679,5 +719,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("MP_PORT", "5200"))
     print(f"[bridge] 启动 wechat-loop bridge + wechat-mp-tools 于 127.0.0.1:{port}")
     print("[bridge] 新增端点：GET /api/kb, POST /api/kb, POST /api/kb/active")
-    _selfcheck_image_tls()
+    _print_tls_report()
     app.run(host="127.0.0.1", port=port, debug=False)
