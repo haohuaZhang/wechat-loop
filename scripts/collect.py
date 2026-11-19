@@ -533,14 +533,18 @@ def merge_into_kb(kb: dict, account_key: str, account_name: str,
 # ── 主入口 ──────────────────────────────────────────────────
 
 def main():
+    global KB_PATH
     p = argparse.ArgumentParser(description="采集公众号文章进 knowledge_base.json")
     p.add_argument("account", help="账号名: 'self' 走 material API；其它名称默认走微信读书搜索采集")
     p.add_argument("--count", type=int, default=20, help="采集数量（自己号=永久素材，竞品=列表数）")
     p.add_argument("--since", default="", help="竞品号截止日期 YYYY-MM-DD（只采集这天之后）")
     p.add_argument("--channel", choices=["weread", "mp"], default="weread",
                    help="竞品号采集通道: weread=微信读书账号池(默认，规避 200013)；mp=公众平台后台需 token+cookie")
+    p.add_argument("--kb", default=str(KB_PATH),
+                   help="写入的 knowledge_base.json 路径（默认主知识库，可传活动 KB）")
     args = p.parse_args()
 
+    KB_PATH = Path(args.kb)
     cred = load_credentials()
     kb = load_kb()
     account = args.account

@@ -35,6 +35,8 @@
  *   GET    /api/kb/articles                    检索知识库（q/account/tag/sort/limit/offset）
  *   GET    /api/kb/article/<id>                单篇详情（含正文）
  *   GET    /api/kb/export                      导出 md / json / zip
+ *   GET    /api/kb/import/sources              预览可导入的采集结果数量
+ *   POST   /api/kb/import                      把采集结果导入当前活动知识库
  */
 
 const USE_MOCK = false
@@ -466,6 +468,32 @@ export const api = {
     if (params.account && params.account !== "all") qs.set("ab", b64url(params.account))
     if (params.tag && params.tag !== "all") qs.set("tb", b64url(params.tag))
     return `/api/kb/export?${qs.toString()}`
+  },
+
+  /**
+   * 预览可导入的采集结果（扫描上游 wechat-mp-tools/data/articles_full）
+   * GET /api/kb/import/sources → {available, toImport, alreadyInKb, accounts, kb}
+   */
+  async kbImportSources() {
+    if (USE_MOCK) return { available: 3, toImport: 1, alreadyInKb: 2, accounts: ["游戏汇总"], kb: "loop/knowledge_base.json" }
+    try {
+      return await fetchJSON("/api/kb/import/sources")
+    } catch (err) {
+      throw toError(err, "读取采集结果失败")
+    }
+  },
+
+  /**
+   * 把上游采集结果导入当前活动知识库（按 url 去重，已存在跳过）
+   * POST /api/kb/import → {ok, added, skipped, total, kb, message?}
+   */
+  async kbImport() {
+    if (USE_MOCK) return { ok: true, added: 1, skipped: 2, total: 3, kb: "loop/knowledge_base.json" }
+    try {
+      return await fetchJSON("/api/kb/import", { method: "POST" })
+    } catch (err) {
+      throw toError(err, "导入采集结果失败")
+    }
   },
 
   /** 选题候选（后端跑 topic_selection.py） */

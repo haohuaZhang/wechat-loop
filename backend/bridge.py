@@ -51,6 +51,10 @@ KB_DIR = LOOP_ROOT / "loop"
 MAIN_KB = KB_DIR / "knowledge_base.json"
 ACTIVE_KB_FILE = KB_DIR / ".active_kb"  # 记录当前活动的 KB id
 
+# 上游 wechat-mp-tools 的采集结果目录（只读，用于「导入采集结果」）
+WMT_DATA_DIR = WMT_DIR / "data"
+WMT_ARTICLES_DIR = WMT_DATA_DIR / "articles_full"
+
 
 def _ensure_dirs() -> None:
     KB_DIR.mkdir(parents=True, exist_ok=True)
@@ -185,6 +189,239 @@ def create_knowledge_base():
             "isActive": False,
             "articleCount": 0,
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---- 知识库：导入上游采集结果 ----
+
+def _kb_slug(title: str) -> str:
+    import re
+    s = re.sub(r"[^\w\u4e00-\u9fff]+", "-", title or "")
+    s = s.strip("-")[:60]
+    return s or "untitled"
+
+
+def _scan_collected_sources() -> list[dict]:
+    """扫描 wechat-mp-tools/data/articles_full，返回可导入的文章清单（只读）。
+
+    每条：{account_key, account_name, title, url, publish_date, content}
+    与上游 _sync_history_from_disk 的目录约定保持一致：
+      articles_full/<公众号>/<文章目录>/{metadata.json, *.md, *.html}
+    """
+    import re
+    from datetime import datetime
+
+    if not WMT_ARTICLES_DIR.is_dir():
+        return []
+
+    try:
+        from bs4 import BeautifulSoup
+    except Exception:
+        BeautifulSoup = None
+
+    skip_dirs = {"channels", "douyin_downloads", "xhs_downloads", "temp_uploads"}
+    out: list[dict] = []
+    try:
+        acc_dirs = sorted(d for d in WMT_ARTICLES_DIR.iterdir() if d.is_dir() and d.name not in skip_dirs)
+    except OSError:
+        return []
+
+    for acc_dir in acc_dirs:
+        account_name = acc_dir.name
+        account_key = re.sub(r"[^\w]", "_", account_name)[:20] or "unknown"
+        try:
+            art_dirs = sorted(d for d in acc_dir.iterdir() if d.is_dir())
+        except OSError:
+            continue
+        for art_dir in art_dirs:
+            try:
+                html_files = [f for f in art_dir.glob("*.html") if not f.name.endswith("_raw.html")]
+                md_files = sorted(art_dir.glob("*.md"))
+            except OSError:
+                continue
+            if not html_files and not md_files:
+                continue
+
+            meta = {}
+            meta_file = art_dir / "metadata.json"
+            if meta_file.exists():
+                try:
+                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                except Exception:
+                    meta = {}
+            title = (meta.get("title") or art_dir.name or "").strip()
+            url = (meta.get("url") or meta.get("link") or "").strip()
+
+            # 正文：优先 .md，其次 html → 纯文本
+            content = ""
+            if md_files:
+                try:
+                    content = md_files[0].read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    content = ""
+            if not content and html_files:
+                try:
+                    raw = html_files[0].read_text(encoding="utf-8", errors="replace")
+                    if BeautifulSoup is not None:
+                        content = BeautifulSoup(raw, "html.parser").get_text("\n")
+                    else:
+                        content = re.sub(r"<[^>]+>", "", raw)
+                except Exception:
+                    content = ""
+
+            # 发布日期：publish_time（秒/毫秒）或 time（ISO 字符串）
+            publish_date = ""
+            for key in ("publish_time", "time"):
+                v = meta.get(key)
+                if not v:
+                    continue
+                try:
+                    ts = float(v)
+                    if ts > 1e12:
+                        ts /= 1000.0
+                    publish_date = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+                    break
+                except Exception:
+                    try:
+                        publish_date = datetime.fromisoformat(str(v)).strftime("%Y-%m-%d")
+                        break
+                    except Exception:
+                        pass
+
+            out.append({
+                "account_key": account_key,
+                "account_name": account_name,
+                "title": title,
+                "url": url,
+                "publish_date": publish_date,
+                "content": content,
+            })
+    return out
+
+
+def _import_sources_into_kb(articles: list[dict], kb_path: Path) -> dict:
+    """把采集结果合并进指定 KB。去重与 collect.py 一致：md5(url)[:12]，已存在则跳过。"""
+    import hashlib
+    import re
+    from datetime import datetime, timezone
+
+    kb = _load_json(kb_path, {"version": "1.0", "accounts": {}, "articles": {}})
+    if not isinstance(kb, dict):
+        kb = {"version": "1.0", "accounts": {}, "articles": {}}
+    kb.setdefault("accounts", {})
+    kb.setdefault("articles", {})
+
+    md_root = KB_DIR / "kb"
+    md_root.mkdir(parents=True, exist_ok=True)
+    seen = set(kb["articles"].keys())
+    added = 0
+    skipped = 0
+
+    for art in articles:
+        title = (art.get("title") or "").strip()
+        if not title:
+            skipped += 1
+            continue
+        url = (art.get("url") or "").strip()
+        aid = hashlib.md5(url.encode("utf-8")).hexdigest()[:12] if url else _kb_slug(title)
+        if aid in seen:
+            skipped += 1
+            continue
+
+        content = art.get("content") or ""
+        account_key = art.get("account_key") or "unknown"
+        account_name = art.get("account_name") or account_key
+        publish_date = art.get("publish_date") or ""
+
+        acc_dir = md_root / account_key
+        acc_dir.mkdir(parents=True, exist_ok=True)
+        md_path = acc_dir / f"{publish_date}_{_kb_slug(title)}.md"
+        local_md = ""
+        if not md_path.name.startswith("_") and not md_path.name.startswith("None"):
+            try:
+                md_path.write_text(f"# {title}\n\n{content}\n", encoding="utf-8")
+                local_md = str(md_path.relative_to(LOOP_ROOT))
+            except OSError:
+                local_md = ""
+
+        body = f"{title} {content[:500]}"
+        kw = list({t for t in re.split(r"[\s，。！？、]+", body) if 2 <= len(t) <= 10})[:8]
+
+        kb["articles"][aid] = {
+            "source_account": account_key,
+            "title": title,
+            "publish_date": publish_date,
+            "url": url,
+            "local_md_path": local_md,
+            "word_count": len(content),
+            "topics": [],
+            "keywords": kw[:6],
+            "crossRefs": [],
+            "used_as_source": False,
+            "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        kb["accounts"].setdefault(account_key, {"name": account_name, "biz": "", "last_collected": ""})
+        kb["accounts"][account_key]["last_collected"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        seen.add(aid)
+        added += 1
+
+    if added:
+        _save_json(kb_path, kb)
+    return {
+        "added": added,
+        "skipped": skipped,
+        "total": len(articles),
+        "kb": str(kb_path.relative_to(LOOP_ROOT)),
+    }
+
+
+@app.route("/api/kb/import/sources", methods=["GET"])
+def kb_import_sources():
+    """预览：上游采集结果里有多少篇可导入当前活动 KB（去重前 / 去重后）"""
+    import hashlib
+    from flask import jsonify
+
+    try:
+        sources = _scan_collected_sources()
+        kb_path = _active_kb_path()
+        kb = _load_json(kb_path, {"articles": {}})
+        existing = set((kb.get("articles") or {}).keys()) if isinstance(kb, dict) else set()
+        to_import = 0
+        for s in sources:
+            url = (s.get("url") or "").strip()
+            aid = hashlib.md5(url.encode("utf-8")).hexdigest()[:12] if url else _kb_slug(s.get("title", ""))
+            if aid not in existing:
+                to_import += 1
+        accounts = sorted({s["account_name"] for s in sources if s.get("account_name")})
+        return jsonify({
+            "available": len(sources),
+            "toImport": to_import,
+            "alreadyInKb": len(sources) - to_import,
+            "accounts": accounts,
+            "kb": str(kb_path.relative_to(LOOP_ROOT)),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/import", methods=["POST"])
+def kb_import():
+    """把上游采集结果导入当前活动 KB（按 md5(url) 去重，已存在的跳过）"""
+    from flask import jsonify
+
+    try:
+        sources = _scan_collected_sources()
+        kb_path = _active_kb_path()
+        if not sources:
+            return jsonify({
+                "ok": True, "added": 0, "skipped": 0, "total": 0,
+                "kb": str(kb_path.relative_to(LOOP_ROOT)),
+                "message": "没有可导入的采集结果（wechat-mp-tools/data/articles_full 为空）",
+            }), 200
+        res = _import_sources_into_kb(sources, kb_path)
+        res["ok"] = True
+        return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1071,7 +1308,8 @@ def loop_topics():
     try:
         top_n = str(max(1, min(50, int(request.args.get("top_n") or 5))))
         min_score = str(float(request.args.get("min_score") or 3.0))
-        res = _run_script("topic_selection.py", ["--top-n", top_n, "--min-score", min_score], timeout=60)
+        kb_rel = str(_active_kb_path().relative_to(LOOP_ROOT))
+        res = _run_script("topic_selection.py", ["--top-n", top_n, "--min-score", min_score, "--kb", kb_rel], timeout=60)
         if not res["ok"]:
             # 脚本报错信息通常就是「知识库空了」这类人话，直接透出
             return jsonify({"error": (res["stderr"] or res["stdout"]).strip()[-400:] or "选题失败"}), 500
@@ -1103,9 +1341,10 @@ def loop_prompt():
 
         query = " ".join([title, *keywords]).strip()
         evidence_path = run_dir / "evidence_pack.json"
+        kb_rel = str(_active_kb_path().relative_to(LOOP_ROOT))
         search = _run_script(
             "simple_search.py",
-            [query, "--top-k", "5", "--output", str(evidence_path.relative_to(LOOP_ROOT))],
+            [query, "--top-k", "5", "--output", str(evidence_path.relative_to(LOOP_ROOT)), "--kb", kb_rel],
             timeout=90,
         )
         if not search["ok"]:

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/common/EmptyState"
 import {
-  Search, X, Download, FileText, ExternalLink, RefreshCw, Loader2, Tag, FolderTree, Plus, Database,
+  Search, X, Download, FileText, ExternalLink, RefreshCw, Loader2, Tag, FolderTree, Plus, Database, Upload,
 } from "lucide-react"
 
 /**
@@ -105,6 +105,12 @@ export function LibraryPage() {
   const [newPath, setNewPath] = React.useState("")
   const [saving, setSaving] = React.useState(false)
 
+  // 导入采集结果
+  const [importing, setImporting] = React.useState(false)
+  const [showImport, setShowImport] = React.useState(false)
+  const [importPreview, setImportPreview] = React.useState(null)
+  const [notice, setNotice] = React.useState("")
+
   const PAGE_SIZE = 50
 
   // 搜索框 debounce 300ms
@@ -194,6 +200,53 @@ export function LibraryPage() {
     }
   }
 
+  const activeKbName = kbs.find((k) => k.isActive)?.name || "当前知识库"
+
+  // 导入采集结果：先预览数量，再确认导入
+  const openImport = async () => {
+    setImporting(true)
+    setError("")
+    setNotice("")
+    try {
+      const prev = await api.kbImportSources()
+      setImportPreview(prev)
+      if (!prev.available) {
+        setNotice("暂无可导入的采集结果（wechat-mp-tools/data/articles_full 为空）")
+        setShowImport(false)
+      } else if (!prev.toImport) {
+        setNotice(`采集结果共 ${prev.available} 篇，均已在当前知识库中，无需重复导入。`)
+        setShowImport(false)
+      } else {
+        setShowImport(true)
+      }
+    } catch (err) {
+      setError(err?.message || "读取采集结果失败")
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const confirmImport = async () => {
+    setImporting(true)
+    setError("")
+    setNotice("")
+    try {
+      const res = await api.kbImport()
+      setShowImport(false)
+      const msg = res.added > 0
+        ? `成功导入 ${res.added} 篇${res.skipped ? `，跳过 ${res.skipped} 篇已存在` : ""}。`
+        : (res.message || `没有新增导入（跳过 ${res.skipped || 0} 篇已存在）。`)
+      setNotice(msg)
+      setActiveId("")
+      await loadKbs()
+      await load()
+    } catch (err) {
+      setError(err?.message || "导入采集结果失败")
+    } finally {
+      setImporting(false)
+    }
+  }
+
   // 选中文章 → 拉正文
   React.useEffect(() => {
     if (!activeId) { setDetail(null); return }
@@ -258,11 +311,23 @@ export function LibraryPage() {
           <Button variant="outline" size="sm" onClick={() => window.open(api.kbExportUrl("json", filters), "_blank")} className="gap-1">
             <Download className="h-3 w-3" /> 导出 JSON
           </Button>
+          <Button variant="outline" size="sm" onClick={openImport} disabled={importing} className="gap-1">
+            {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />} 导入采集结果
+          </Button>
           <Button variant="outline" size="sm" onClick={load} className="gap-1">
             <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} /> 刷新
           </Button>
         </div>
       </header>
+
+      {notice && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice("")} className="rounded-sm p-0.5 hover:bg-emerald-500/20" aria-label="关闭提示">
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-4">
         {/* 左栏 */}
@@ -474,6 +539,55 @@ export function LibraryPage() {
               <Button size="sm" onClick={submitCreate} disabled={saving} className="gap-1">
                 {saving && <Loader2 className="h-3 w-3 animate-spin" />}
                 创建
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImport && importPreview && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          onClick={() => { if (!importing) setShowImport(false) }}
+        >
+          <div
+            className="w-full max-w-sm rounded-md border border-border bg-card p-5 shadow-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="导入采集结果"
+          >
+            <h3 className="font-serif text-lg font-semibold">导入采集结果</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              将上游 wechat-mp-tools 采集到的文章导入当前知识库，按文章链接去重。
+            </p>
+            <div className="mt-4 space-y-1.5 rounded-md border border-border bg-secondary/40 p-3 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">目标知识库</span>
+                <span className="font-medium">{activeKbName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">采集结果总数</span>
+                <span className="font-mono">{importPreview.available}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">未入库（将导入）</span>
+                <span className="font-mono font-medium text-emerald-600 dark:text-emerald-400">{importPreview.toImport}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">已存在（将跳过）</span>
+                <span className="font-mono text-muted-foreground">{importPreview.alreadyInKb}</span>
+              </div>
+              {importPreview.accounts?.length > 0 && (
+                <div className="pt-1 text-muted-foreground">来源：{importPreview.accounts.join("、")}</div>
+              )}
+            </div>
+            {error && <p className="mt-2 text-[12px] text-destructive">{error}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowImport(false)} disabled={importing}>取消</Button>
+              <Button size="sm" onClick={confirmImport} disabled={importing || !importPreview.toImport} className="gap-1">
+                {importing && <Loader2 className="h-3 w-3 animate-spin" />}
+                开始导入
               </Button>
             </div>
           </div>

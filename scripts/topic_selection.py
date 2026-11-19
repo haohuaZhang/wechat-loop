@@ -27,12 +27,15 @@ from collections import Counter
 ROOT = Path(__file__).resolve().parent.parent
 KB_PATH = ROOT / "loop" / "knowledge_base.json"
 HISTORY_PATH = ROOT / "loop" / "history.json"
+# 运行时可被 main() 的 --kb 覆盖，让选题跟随当前活动知识库
+KB_PATH_OVERRIDE: Path | None = None
 
 
 def load_kb() -> dict:
-    if not KB_PATH.exists():
+    path = KB_PATH_OVERRIDE or KB_PATH
+    if not path.exists():
         return {"articles": {}}
-    return json.loads(KB_PATH.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def load_history() -> dict:
@@ -146,12 +149,16 @@ def select_topics(top_n: int = 5, min_score: float = 3.0) -> list[dict]:
 
 
 def main():
+    global KB_PATH_OVERRIDE
     p = argparse.ArgumentParser()
     p.add_argument("--top-n", type=int, default=5)
     p.add_argument("--min-score", type=float, default=3.0)
+    p.add_argument("--kb", default=str(KB_PATH),
+                   help="knowledge_base.json 路径（默认主知识库，可传活动 KB）")
     p.add_argument("--output", help="输出 JSON 文件（不写则 stdout）")
     args = p.parse_args()
 
+    KB_PATH_OVERRIDE = Path(args.kb)
     topics = select_topics(args.top_n, args.min_score)
     payload = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

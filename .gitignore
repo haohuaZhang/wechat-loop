@@ -26,6 +26,9 @@ loop/*storage*
 loop/*token*
 # 备份文件不推
 loop/knowledge_base.json.bak
+# 运行时状态（活动 KB 指针 / 采集任务）不推
+loop/.active_kb
+loop/collect_jobs.json
 
 # ── 其他 json（cookies/storage_state 等，绝对不能推） ──
 # 默认排除所有 json
