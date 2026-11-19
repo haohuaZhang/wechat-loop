@@ -465,10 +465,11 @@ def image_proxy():
     }
     data, ctype = _download_image(url, req_headers)
     if data is None:
-        # 失败时回 1x1 透明图：正文里只会留一块空白，不会把 JSON 错误糊在页面上
+        # 失败时回一块可见的占位图：透明 1px 会让人以为「这文章本来就没图」，
+        # 放一块灰底提示反而能一眼看出是取图失败还是正文缺图。
         return Response(
-            BLANK_GIF,
-            mimetype="image/gif",
+            PLACEHOLDER_SVG,
+            mimetype="image/svg+xml",
             headers={"Cache-Control": "no-store"},
         )
 
@@ -483,12 +484,14 @@ def image_proxy():
     return Response(data, mimetype=ctype, headers={"Cache-Control": "public, max-age=604800"})
 
 
-# 1x1 透明 gif，用于图片拉取失败时的占位
-BLANK_GIF = (
-    b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!"
-    b"\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00"
-    b"\x00\x02\x02D\x01\x00;"
-)
+# 取图失败时的可见占位（透明 1px 会让人误判成「文章本来没图」）
+PLACEHOLDER_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="90" viewBox="0 0 480 90">'
+    '<rect width="480" height="90" fill="#f4f4f5" stroke="#d4d4d8" stroke-dasharray="4 4"/>'
+    '<text x="240" y="50" font-size="14" fill="#71717a" text-anchor="middle" '
+    'font-family="-apple-system, sans-serif">图片未能加载（原图失效或代理不通）</text>'
+    "</svg>"
+).encode("utf-8")
 
 
 def _download_image(url: str, headers: dict) -> tuple[bytes | None, str]:
