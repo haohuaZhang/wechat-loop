@@ -1643,7 +1643,7 @@ def kb_excerpt_delete(excerpt_id: str):
 
 @app.route("/api/kb/evidence", methods=["POST"])
 def kb_evidence():
-    """素材篮 → 证据包：落 loop/runs/<date>/evidence_pack.json，并回写引用状态。"""
+    """素材篮 → 证据包：落 loop/runs/<date>/evidence_pack.json（引用状态等发布回流再标记）。"""
     from flask import jsonify, request
 
     try:
@@ -2447,14 +2447,23 @@ def loop_prompt():
 
         query = " ".join([title, *keywords]).strip()
         evidence_path = run_dir / "evidence_pack.json"
-        kb_rel = str(_active_kb_path().relative_to(LOOP_ROOT))
-        search = _run_script(
-            "simple_search.py",
-            [query, "--top-k", "5", "--output", str(evidence_path.relative_to(LOOP_ROOT)), "--kb", kb_rel],
-            timeout=90,
+
+        # 素材篮为同一选题生成的证据包优先复用，避免写作台检索把它覆盖掉。
+        existing = _load_json(evidence_path, {}) if evidence_path.exists() else {}
+        reused = (
+            isinstance(existing, dict)
+            and str(existing.get("query") or "").strip() == title
+            and bool(existing.get("top_chunks"))
         )
-        if not search["ok"]:
-            return jsonify({"error": f"检索失败：{(search['stderr'] or search['stdout']).strip()[-300:]}"}), 500
+        if not reused:
+            kb_rel = str(_active_kb_path().relative_to(LOOP_ROOT))
+            search = _run_script(
+                "simple_search.py",
+                [query, "--top-k", "5", "--output", str(evidence_path.relative_to(LOOP_ROOT)), "--kb", kb_rel],
+                timeout=90,
+            )
+            if not search["ok"]:
+                return jsonify({"error": f"检索失败：{(search['stderr'] or search['stdout']).strip()[-300:]}"}), 500
 
         prompt_path = run_dir / ".prompt"
         built = _run_script(
@@ -2481,6 +2490,7 @@ def loop_prompt():
             "promptPath": str(prompt_path.relative_to(LOOP_ROOT)),
             "prompt": prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else "",
             "evidenceCount": len(evidence.get("top_chunks") or []),
+            "evidenceReused": reused,
             "topic": {"title": title, "keywords": keywords, "persona": persona,
                       "framework": framework, "dimensions": dimensions},
         })

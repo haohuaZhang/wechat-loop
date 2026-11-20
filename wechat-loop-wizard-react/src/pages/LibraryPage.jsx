@@ -505,6 +505,7 @@ export function LibraryPage() {
       pushToast(`证据包已生成：${res.evidencePath}（${res.evidenceCount} 条）`)
       if (res.promptPath) pushToast(`Prompt 已生成：${res.promptPath}`)
       for (const w of res.warnings || []) pushToast(w)
+      if (evidenceTitle.trim()) pushToast("写作台用同一标题生成 Prompt 时会复用这个证据包")
       await Promise.allSettled([loadExcerpts(), loadSide(), loadList({ silent: true })])
       setRefreshTick((t) => t + 1)
     } catch (err) {

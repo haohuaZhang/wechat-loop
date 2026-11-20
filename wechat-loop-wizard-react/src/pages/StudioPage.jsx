@@ -160,6 +160,7 @@ export function StudioPage() {
       setPrompt(res.prompt || "")
       setPromptPath(res.promptPath || "")
       setEvidenceCount(res.evidenceCount || 0)
+      if (res.evidenceReused) setToast(`已复用素材篮证据包（${res.evidenceCount || 0} 条）`)
       setStep("prompt")
     } catch (err) {
       setToast(err?.message || "生成 prompt 失败")
