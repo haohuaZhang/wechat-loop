@@ -194,10 +194,27 @@ cd /workspace/wechat-loop
 # 先跑 auth.py login 扫码，cookies.json 落盘后自动读取
 python3 scripts/collect.py "目标公众号名称" --count 20 --since 2026-01-01
 
+# 批量：一次采多个号（串行 + 频控间隔，单号失败不阻断后续）
+python3 scripts/collect.py "号A" "号B" "号C" --count 10
+
+# 断点续采：各号从 loop/collect_state.json 里上次成功的最新日期继续
+python3 scripts/collect.py "号A" "号B" --resume
+
+# 单号失败重试次数（默认 2；凭证/频控错误不重试）
+python3 scripts/collect.py "号A" --retries 3
+
+# 写入指定知识库（默认主库；也可传活动库 loop/kb/<id>.json）
+python3 scripts/collect.py "号A" --kb loop/kb/<id>.json
+
 # 自己号（可选，只用于复盘自己发过的内容）
 # 需要：WECHAT_APPID + WECHAT_APPSECRET（公众号后台 → 开发 → 基本配置）
 python3 scripts/collect.py self --count 20
 ```
+
+采集/导入后的产物：`loop/knowledge_base.json`（或指定 KB）的 `articles` 记录 +
+`loop/kb/<账号>/<日期>_<标题>.md` 正文文档；UI 里「采集任务」跑完后，
+到知识库页点「导入采集结果」即可把上游 `wechat-mp-tools/data/articles_full`
+的产物并入当前知识库（按 url 去重）。
 
 ### Phase 1.4 — Playwright 选择器验证
 
