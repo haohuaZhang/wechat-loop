@@ -986,6 +986,7 @@ def kb_stats():
         no_body = 0
         no_keywords = 0
         score_sum = 0
+        cite_days: list[float] = []
 
         for item in items:
             if not isinstance(item, dict):
@@ -1021,6 +1022,20 @@ def kb_stats():
             ts = _parse_iso(item.get("created_at"))
             if ts and ts >= cutoff:
                 week_added += 1
+            if item.get("used_as_source") or stage in ("cited", "drafted"):
+                created = _parse_iso(item.get("created_at"))
+                used = _parse_iso(item.get("used_at"))
+                if created and used:
+                    cite_days.append(max(0.0, (used - created).total_seconds() / 86400))
+
+        cite_days.sort()
+        if cite_days:
+            mid = len(cite_days) // 2
+            median_cite = (cite_days[mid] if len(cite_days) % 2
+                           else (cite_days[mid - 1] + cite_days[mid]) / 2)
+            median_cite = round(median_cite, 1)
+        else:
+            median_cite = None
 
         total = sum(counts.values())
         accounts_meta = kb.get("accounts") if isinstance(kb.get("accounts"), dict) else {}
@@ -1045,6 +1060,8 @@ def kb_stats():
             "noBody": no_body,
             "noKeywords": no_keywords,
             "avgQuality": round(score_sum / total, 1) if total else 0,
+            "medianDaysToCite": median_cite,
+            "citeTargetDays": 7,
             "citedRate": round((counts["cited"] + counts["drafted"]) / total, 4) if total else 0,
             "byAccount": by_account_out,
             "byTag": [{"tag": k, "count": v}
@@ -1304,6 +1321,26 @@ def _kb_analyze_module():
     return importlib.import_module("kb_analyze")
 
 
+_ANALYSIS_CACHE: dict = {}
+
+
+def _cached_analysis(kind: str, params: dict, fn):
+    """按「KB 路径 + mtime + 参数」缓存分析结果，KB 一改写自动失效。"""
+    kb_path = _active_kb_path()
+    try:
+        mtime = kb_path.stat().st_mtime_ns
+    except OSError:
+        mtime = 0
+    key = (str(kb_path), mtime, kind, tuple(sorted(params.items())))
+    if key in _ANALYSIS_CACHE:
+        return _ANALYSIS_CACHE[key]
+    value = fn()
+    if len(_ANALYSIS_CACHE) > 32:
+        _ANALYSIS_CACHE.clear()
+    _ANALYSIS_CACHE[key] = value
+    return value
+
+
 def _excerpts_path(kb_path: Path | None = None) -> Path:
     stem = Path(kb_path or _active_kb_path()).stem
     return KB_DIR / "kb" / ".excerpts" / f"{stem}.json"
@@ -1500,7 +1537,11 @@ def kb_topics():
     except ValueError:
         limit = 8
     try:
-        return jsonify(_kb_analyze_module().build_clusters(_active_kb_path(), limit=limit))
+        data = _cached_analysis(
+            "topics", {"limit": limit},
+            lambda: _kb_analyze_module().build_clusters(_active_kb_path(), limit=limit),
+        )
+        return jsonify(data)
     except Exception as e:
         return jsonify({"error": f"主题聚类失败：{e}"}), 500
 
@@ -1515,7 +1556,11 @@ def kb_duplicates():
     except ValueError:
         limit = 30
     try:
-        return jsonify(_kb_analyze_module().find_duplicates(_active_kb_path(), limit=limit))
+        data = _cached_analysis(
+            "duplicates", {"limit": limit},
+            lambda: _kb_analyze_module().find_duplicates(_active_kb_path(), limit=limit),
+        )
+        return jsonify(data)
     except Exception as e:
         return jsonify({"error": f"重复检测失败：{e}"}), 500
 
@@ -1670,7 +1715,13 @@ def kb_evidence():
             "top_chunks": top_chunks,
         })
 
-        marked = _mark_articles_used(order, stage="cited")
+        # 引用状态只在「发布回流」时标记（_mark_run_evidence_used），
+        # 组证据包属于写作准备，不算已引用，避免虚高被引用率。
+        warnings = []
+        if len(top_chunks) < 5:
+            warnings.append(f"证据包仅 {len(top_chunks)} 条，验收建议至少 5 条")
+        if missing_url:
+            warnings.append(f"{missing_url} 条来源缺少原文链接")
 
         prompt = ""
         prompt_path = None
@@ -1700,8 +1751,9 @@ def kb_evidence():
             "promptPath": str(prompt_path.relative_to(LOOP_ROOT)) if prompt else "",
             "prompt": prompt,
             "evidenceCount": len(top_chunks),
-            "marked": marked,
             "missingUrl": missing_url,
+            "warnings": warnings,
+            "marked": [],
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

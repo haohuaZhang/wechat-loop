@@ -205,12 +205,15 @@ export function InsightView({
 
   const thin = Number(stats.thin) || 0
   const avgQuality = Number(stats.avgQuality) || 0
+  const medianCite = stats.medianDaysToCite == null ? null : Number(stats.medianDaysToCite)
+  const citeTarget = Number(stats.citeTargetDays) || 7
   const dupGroups = Array.isArray(duplicates?.groups) ? duplicates.groups : []
   const cards = [
     { label: "素材总数", value: total, sub: `覆盖 ${byAccount.length} 个账号` },
     { label: "未使用", value: unused, sub: "尚未进入写作流程" },
     { label: "本周新增", value: weekAdded, sub: "最近 7 天采集入库" },
     { label: "被引用率", value: `${rate}%`, sub: `${Number(stats.cited) || 0} 篇已引用` },
+    { label: "首次引用中位", value: medianCite == null ? "—" : `${medianCite}天`, sub: `目标 ≤${citeTarget} 天`, warn: medianCite != null && medianCite > citeTarget },
     { label: "薄文", value: thin, sub: `平均质量分 ${avgQuality}`, warn: thin > 0 },
   ]
 

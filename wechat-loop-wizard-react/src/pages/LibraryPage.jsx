@@ -504,7 +504,7 @@ export function LibraryPage() {
       setModal(null)
       pushToast(`证据包已生成：${res.evidencePath}（${res.evidenceCount} 条）`)
       if (res.promptPath) pushToast(`Prompt 已生成：${res.promptPath}`)
-      if (Number(res.missingUrl)) pushToast(`${res.missingUrl} 条来源没有原文链接，已在证据包里标注`)
+      for (const w of res.warnings || []) pushToast(w)
       await Promise.allSettled([loadExcerpts(), loadSide(), loadList({ silent: true })])
       setRefreshTick((t) => t + 1)
     } catch (err) {
@@ -1210,7 +1210,7 @@ export function LibraryPage() {
             </span>
           </div>
           <p className="mt-1 text-[12px] text-[#6B6B6B]">
-            在详情页选中正文即可摘录；组包后写入 loop/runs/&lt;日期&gt;/evidence_pack.json，并回写引用状态。
+            在详情页选中正文即可摘录；组包后写入 loop/runs/&lt;日期&gt;/evidence_pack.json。发布成功后才会标记引用。
           </p>
 
           <div className="mt-3 max-h-[300px] space-y-1.5 overflow-auto pr-1">
@@ -1260,7 +1260,10 @@ export function LibraryPage() {
             />
           </label>
 
-          <div className="mt-4 flex items-center justify-between gap-2">
+          <div className="mt-3 text-[11px] text-[#A0A09A]">
+            验收线：证据包 ≥5 条，且来源带原文链接（当前 {excerpts.length + checked.size} 条）
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-[11px] text-[#A0A09A]">
               {checked.size ? `已勾选 ${checked.size} 篇文章会一并进入证据包` : "未勾选文章时仅使用摘录"}
             </span>
