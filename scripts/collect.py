@@ -459,6 +459,7 @@ def collect_competitor_weread(name: str, count: int, since: str = "") -> list[di
 
 KB_PATH = ROOT / "loop" / "knowledge_base.json"
 KB_DIR = ROOT / "loop" / "kb"
+STATE_PATH = ROOT / "loop" / "collect_state.json"
 
 
 def load_kb() -> dict:
@@ -469,6 +470,21 @@ def load_kb() -> dict:
 
 def save_kb(kb: dict):
     KB_PATH.write_text(json.dumps(kb, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_state() -> dict:
+    """采集进度（断点续采用）：{account_key: {last_success_at, last_publish_date, ...}}"""
+    if not STATE_PATH.exists():
+        return {}
+    try:
+        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_state(state: dict):
+    STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def slug(title: str) -> str:
@@ -532,25 +548,8 @@ def merge_into_kb(kb: dict, account_key: str, account_name: str,
 
 # ── 主入口 ──────────────────────────────────────────────────
 
-def main():
-    global KB_PATH
-    p = argparse.ArgumentParser(description="采集公众号文章进 knowledge_base.json")
-    p.add_argument("account", help="账号名: 'self' 走 material API；其它名称默认走微信读书搜索采集")
-    p.add_argument("--count", type=int, default=20, help="采集数量（自己号=永久素材，竞品=列表数）")
-    p.add_argument("--since", default="", help="竞品号截止日期 YYYY-MM-DD（只采集这天之后）")
-    p.add_argument("--channel", choices=["weread", "mp"], default="weread",
-                   help="竞品号采集通道: weread=微信读书账号池(默认，规避 200013)；mp=公众平台后台需 token+cookie")
-    p.add_argument("--kb", default=str(KB_PATH),
-                   help="写入的 knowledge_base.json 路径（默认主知识库，可传活动 KB）")
-    args = p.parse_args()
-
-    KB_PATH = Path(args.kb)
-    cred = load_credentials()
-    kb = load_kb()
-    account = args.account
-
-    print(f"═══ wechat-loop collect ═══  account={account}  count={args.count}")
-
+def fetch_articles_for(account: str, args, cred: dict) -> list[dict]:
+    """按账号类型走对应通道，返回文章列表（不写库）。失败抛异常，由调用方决定重试/继续。"""
     if account == "self":
         # ── 自己号：优先 material API，退而用 token/cookie ──
         articles: list[dict] = []
@@ -574,63 +573,141 @@ def main():
             except Exception as e:
                 print(f"  ❌ material API 错误: {e}")
 
-        if not articles:
-            # 退而用 token/cookie + searchbiz 自己号
-            if cred["token"] and cred["cookie"]:
-                print("路径 A2: searchbiz + /cgi-bin/appmsg（token+cookie）")
-                try:
-                    sess = make_session(cred["cookie"])
-                    articles = collect_competitor(sess, cred["token"], account, args.count, args.since)
-                except (AuthError, FreqControlError, ApiError) as e:
-                    print(f"  ❌ {e}")
-                    sys.exit(2)
-            else:
-                print("  ❌ 自己号采集需要 AppID/Secret 或 token+cookie")
-                print("     AppID/Secret: 公众平台后台 → 设置与开发")
-                print("     token: mp.weixin.qq.com URL 末尾 token= 后的数字")
-                print("     cookie: F12 → Application → Cookies → 复制整行")
-                sys.exit(1)
+        if articles:
+            return articles
 
-        added = merge_into_kb(kb, "self", account, articles)
-        save_kb(kb)
-        print(f"✅ 自己号: 新增 {added}/{len(articles)} 篇 → KB 共 {len(kb['articles'])} 篇")
+        # 退而用 token/cookie + searchbiz 自己号
+        if cred["token"] and cred["cookie"]:
+            print("路径 A2: searchbiz + /cgi-bin/appmsg（token+cookie）")
+            sess = make_session(cred["cookie"])
+            return collect_competitor(sess, cred["token"], account, args.count, args.since)
 
-    else:
-        account_key = re.sub(r"[^\w]", "_", account)[:20]
+        print("  ❌ 自己号采集需要 AppID/Secret 或 token+cookie")
+        print("     AppID/Secret: 公众平台后台 → 设置与开发")
+        print("     token: mp.weixin.qq.com URL 末尾 token= 后的数字")
+        print("     cookie: F12 → Application → Cookies → 复制整行")
+        raise AuthError("自己号缺少凭证")
 
-        # ── 通道 A：微信读书账号池（默认，不碰公众平台后台）──
-        if args.channel == "weread":
-            print("通道: 微信读书账号池")
+    # ── 通道 A：微信读书账号池（默认，不碰公众平台后台）──
+    if args.channel == "weread":
+        print("通道: 微信读书账号池")
+        return collect_competitor_weread(account, args.count, args.since)
+
+    # ── 通道 B：公众平台后台（需要 token + cookie）──
+    if not cred["token"] or not cred["cookie"]:
+        raise AuthError(f"竞品号「{account}」需要 token + cookie")
+    sess = make_session(cred["cookie"])
+    return collect_competitor(sess, cred["token"], account, args.count, args.since)
+
+
+def run_account(account: str, args, kb: dict, cred: dict, state: dict) -> dict:
+    """采集单个账号并合入 KB，成功后写入断点续采状态。"""
+    account_key = "self" if account == "self" else re.sub(r"[^\w]", "_", account)[:20]
+
+    since = args.since
+    if args.resume and account != "self":
+        last = (state.get(account_key) or {}).get("last_publish_date") or ""
+        if last and last > since:
+            since = last
+            print(f"  断点续采: 从 {since} 之后继续（该号上次成功采集的最新日期）")
+
+    saved_since, args.since = args.since, since
+    try:
+        articles = fetch_articles_for(account, args, cred)
+    finally:
+        args.since = saved_since
+
+    if not articles:
+        print("  ⚠️ 没有采到新文章（可能全部已入库）")
+
+    added = merge_into_kb(kb, account_key, account, articles)
+    save_kb(kb)
+
+    st = state.setdefault(account_key, {})
+    dates = [a.get("publish_date") for a in articles if a.get("publish_date")]
+    st.update({
+        "name": account,
+        "last_success_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "last_publish_date": max(dates) if dates else st.get("last_publish_date", ""),
+        "last_added": added,
+        "last_total": len(articles),
+    })
+    save_state(state)
+
+    label = "自己号" if account == "self" else f"竞品号 {account}"
+    print(f"✅ {label}: 新增 {added}/{len(articles)} 篇 → KB 共 {len(kb['articles'])} 篇")
+    return {"account": account, "added": added, "total": len(articles)}
+
+
+def main():
+    global KB_PATH
+    p = argparse.ArgumentParser(description="采集公众号文章进 knowledge_base.json")
+    p.add_argument("accounts", nargs="+",
+                   help="账号名，可传多个批量采集：'self' 走 material API；其它默认走微信读书搜索采集")
+    p.add_argument("--count", type=int, default=20, help="采集数量（自己号=永久素材，竞品=列表数）")
+    p.add_argument("--since", default="", help="竞品号截止日期 YYYY-MM-DD（只采集这天之后）")
+    p.add_argument("--channel", choices=["weread", "mp"], default="weread",
+                   help="竞品号采集通道: weread=微信读书账号池(默认，规避 200013)；mp=公众平台后台需 token+cookie")
+    p.add_argument("--kb", default=str(KB_PATH),
+                   help="写入的 knowledge_base.json 路径（默认主知识库，可传活动 KB）")
+    p.add_argument("--resume", action="store_true",
+                   help="断点续采：各账号从上次成功采集的最新日期继续（进度存 loop/collect_state.json）")
+    p.add_argument("--retries", type=int, default=2,
+                   help="单账号失败重试次数（接口错误退避重试，默认 2；凭证/频控错误不重试）")
+    args = p.parse_args()
+
+    KB_PATH = Path(args.kb)
+    cred = load_credentials()
+    kb = load_kb()
+    state = load_state()
+
+    print(f"═══ wechat-loop collect ═══  accounts={','.join(args.accounts)}  count={args.count}"
+          f"  resume={'on' if args.resume else 'off'}")
+
+    results, failures = [], []
+    for idx, account in enumerate(args.accounts):
+        if idx:
+            polite_sleep(REQ_DELAY_MIN, REQ_DELAY_MAX)
+        print(f"\n── [{idx + 1}/{len(args.accounts)}] {account} ──")
+        attempt = 0
+        while True:
             try:
-                articles = collect_competitor_weread(account, args.count, args.since)
+                results.append(run_account(account, args, kb, cred, state))
+                break
+            except AuthError as e:
+                print(f"  ❌ 凭证问题: {e}")
+                failures.append({"account": account, "error": str(e)})
+                break
+            except FreqControlError as e:
+                print(f"  ❌ 频控: {e}")
+                failures.append({"account": account, "error": str(e)})
+                break
             except RuntimeError as e:
                 print(f"  ❌ {e}")
                 print("     已登录的微信读书账号可在 http://localhost:5173/#/collect 扫码添加")
                 print("     想改回公众平台后台采集: 加 --channel mp")
-                sys.exit(2)
-            if not articles:
-                print("  ⚠️ 没有采到新文章（可能全部已下载过，用网页端可看到历史）")
-            added = merge_into_kb(kb, account_key, account, articles)
-            save_kb(kb)
-            print(f"✅ 竞品号 {account}: 新增 {added}/{len(articles)} 篇 → KB 共 {len(kb['articles'])} 篇")
-            return
+                failures.append({"account": account, "error": str(e)})
+                break
+            except (ApiError, requests.RequestException) as e:
+                if attempt < args.retries:
+                    attempt += 1
+                    cooldown = min(FREQ_COOLDOWN, 30 * attempt)
+                    print(f"  ⚠️ 失败: {e} — {cooldown}s 后重试（{attempt}/{args.retries}）")
+                    time.sleep(cooldown)
+                    continue
+                print(f"  ❌ 最终失败（已重试 {args.retries} 次）: {e}")
+                failures.append({"account": account, "error": str(e)})
+                break
 
-        # ── 通道 B：公众平台后台（需要 token + cookie）──
-        if not cred["token"] or not cred["cookie"]:
-            print(f"  ❌ 竞品号「{account}」需要 token + cookie")
-            sys.exit(1)
-        sess = make_session(cred["cookie"])
-        try:
-            articles = collect_competitor(sess, cred["token"], account, args.count, args.since)
-        except FreqControlError as e:
-            print(f"  ❌ 频控: {e}")
-            sys.exit(3)
-        except AuthError as e:
-            print(f"  ❌ 凭证失效: {e} — 重新登录 mp.weixin.qq.com")
-            sys.exit(2)
-        added = merge_into_kb(kb, account_key, account, articles)
-        save_kb(kb)
-        print(f"✅ 竞品号 {account}: 新增 {added}/{len(articles)} 篇 → KB 共 {len(kb['articles'])} 篇")
+    print("\n═══ 汇总 ═══")
+    for r in results:
+        print(f"  ✅ {r['account']}: 新增 {r['added']}/{r['total']} 篇")
+    for f in failures:
+        print(f"  ❌ {f['account']}: {f['error']}")
+    print(f"  成功 {len(results)} / 失败 {len(failures)}，KB 共 {len(kb['articles'])} 篇")
+
+    if failures:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
