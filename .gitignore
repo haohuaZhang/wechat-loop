@@ -29,6 +29,12 @@ loop/knowledge_base.json.bak
 # 运行时状态（活动 KB 指针 / 采集任务）不推
 loop/.active_kb
 loop/collect_jobs.json
+# KB 全文索引（本地生成，可随时重建）
+loop/kb/.index/
+# KB schema 迁移备份
+*.v1.bak
+# 真实语料测试库的正文抓取产物（含第三方版权内容，不入库）
+loop/kb/IT之家/
 
 # ── 其他 json（cookies/storage_state 等，绝对不能推） ──
 # 默认排除所有 json

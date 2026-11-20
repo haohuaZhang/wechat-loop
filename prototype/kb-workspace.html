@@ -626,8 +626,8 @@ body.compact .main{padding-top:14px}
         <label class="kb-select" title="切换知识库">
           <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3l6 3-6 3-6-3 6-3z"/><path d="M3 9l6 3 6-3"/></svg>
           <select id="kbSelect" aria-label="知识库">
-            <option value="主知识库">主知识库 · 18 篇</option>
-            <option value="全部知识库">全部知识库 · 18 篇</option>
+            <option value="主知识库">主知识库 · 50 篇</option>
+            <option value="全部知识库">全部知识库 · 50 篇</option>
           </select>
           <span class="chev">
             <svg width="12" height="12" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7l4.5 4.5L13.5 7"/></svg>
@@ -698,264 +698,62 @@ body.compact .main{padding-top:14px}
 
   /* ============ 演示数据 ============ */
   var ARTICLES = [
-    {
-      id:1,
-      title:'免费在线看电影｜又发现几个免登录无广告的影视站',
-      account:'差评', isSelf:false, date:'2026-11-18',
-      tags:['影视资源','站点合集','无广告'], collection:'收藏夹', status:'未用',
-      words:2680,
-      excerpt:'又翻到几个打开即播、不用注册的影视站，片源更新还算勤快，顺手整理给同样想省事的人。',
-      body:[
-        '这几个站最大的共同点是打开即播，没有注册弹窗，也没有关不掉的浮层广告。片源以老片和刚下院线不久的片子为主，清晰度大多在 1080P。',
-        '移动端体验比桌面端更稳，首页到播放页基本三步以内，加载大多在 3 秒内。个别站点会在片头插 15 秒贴片，介意可以换备用域名。',
-        '这类站点版权状态复杂，适合个人临时观看，不建议长期依赖，也不要在上面登录常用账号或填写手机号。'
-      ],
-      related:[2,3,5], topics:['影视资源']
-    },
-    {
-      id:2,
-      title:'4K 影视资源去哪里找？推荐 5 个亲测好用的站',
-      account:'影视飓风', isSelf:false, date:'2026-11-12',
-      tags:['4K','影视资源','工具'], collection:'收藏夹', status:'已引用',
-      words:3120,
-      excerpt:'4K 片源分散在不同站点的分区里。花两个周末重测常看的五个站，重点看码率、字幕和登录门槛。',
-      body:[
-        '4K 片源不是没有，而是分散在不同站点的不同分区里。我把常看的五个站重新测了一遍，重点看码率、字幕和是否强制登录。',
-        '稳定度最好的是两个老站，4K 分区更新到本周，HDR 标识基本准确；另外三个更适合找冷门片，缺点是搜索做得粗糙。',
-        '如果只是偶尔看，没必要为了 4K 折腾 NAS。先把宽带和播放器调好，再考虑片源，体验差距没有想象中那么大。'
-      ],
-      related:[1,3,4], topics:['影视资源'], dupOf:1
-    },
-    {
-      id:3,
-      title:'我在用的 6 个冷门影视资源站，支持杜比视界',
-      account:'差评', isSelf:false, date:'2026-10-28',
-      tags:['影视资源'], collection:'未归类', status:'未用',
-      words:2260,
-      excerpt:'六个冷门站点，两个支持杜比视界，注册只收邮箱。适合找院线之外的老片和纪录片。',
-      body:[
-        '这六个站共同点是冷门片多、界面干净，其中两个支持杜比视界，片头会明确标注。注册只收邮箱，不需要手机号。',
-        '实测播放器兼容性不错，Apple TV 和安卓电视都能直接投屏。缺点是部分片源只有外挂字幕，需要手动加载。',
-        '建议把它们放在同一个收藏夹里，按片源类型分工使用，比每次都重新搜索省事很多。'
-      ],
-      related:[1,2,4], topics:['影视资源']
-    },
-    {
-      id:4,
-      title:'影视资源下载避坑指南：这 4 类站点不要碰',
-      account:'影视飓风', isSelf:false, date:'2026-10-21',
-      tags:['影视资源','版权风险','避坑'], collection:'选题池', status:'未用',
-      words:1980,
-      excerpt:'要求装专用播放器、催充值、域名频繁更换、索要身份证——这四类站点，建议直接关掉。',
-      body:[
-        '第一类别碰的是要求安装专用播放器的站，安装包里常夹带捆绑软件；第二类是弹窗引导充值“永久会员”的站点，基本没有售后。',
-        '第三类是域名三天两头更换的站，今天能打开明天就失效；第四类是要求上传身份证或银行卡的站，风险最高。',
-        '判断方法很简单：看它是否催促你付费、是否索要敏感信息、是否有稳定的更新记录。三条里踩中两条，直接关掉。'
-      ],
-      related:[2,3,5], topics:['影视资源']
-    },
-    {
-      id:5,
-      title:'2026 年还能白嫖影视会员吗？实测 8 个渠道',
-      account:'差评', isSelf:false, date:'2026-11-05',
-      tags:['影视会员'], collection:'灵感速记', status:'未用',
-      words:2840,
-      excerpt:'共享账号和代充今年封号率明显上升。真正稳的优惠，其实藏在运营商套餐和信用卡权益里。',
-      body:[
-        '先说不合规矩的：共享账号、代充、来路不明的兑换码，今年封号比例明显上升，不建议再试。下面只讨论正规渠道的优惠。',
-        '实测下来，运营商套餐附赠、信用卡权益和平台联合会员是最稳的三类，平均能省三到五成，缺点是绑定周期长。',
-        '如果只是想追一两部剧，按周租比包月划算。先算清楚自己每月真正看几小时，再决定买哪种，别被年卡折扣带着走。'
-      ],
-      related:[1,2,3], topics:['影视资源']
-    },
-    {
-      id:6,
-      title:'公众号起号 30 天：靠 6 个选题模板涨了 8000 粉',
-      account:'运营研究社', isSelf:false, date:'2026-11-16',
-      tags:['起号','选题模板','涨粉'], collection:'选题池', status:'已引用',
-      words:3560,
-      excerpt:'起号第一个月只做六类固定选题，每周三更。第三周开始被推荐，单篇带来两千多关注。',
-      body:[
-        '起号第一个月，我没有追热点，只做了六类固定选题：避坑、清单、对比、复盘、模板和问答。每类提前准备三个角度。',
-        '节奏是每周三更，发布时间固定在中午和晚上各一次。第三周开始有选题被系统推荐，单篇带来两千多关注。',
-        '真正有效的不是模板本身，而是模板逼着我把“想写什么”换成“读者此刻要解决什么”。这一点比任何涨粉技巧都重要。'
-      ],
-      related:[7,11,15], topics:['公众号增长']
-    },
-    {
-      id:7,
-      title:'2026 年公众号还能做吗？三个数据告诉你答案',
-      account:'新榜', isSelf:false, date:'2026-11-10',
-      tags:['行业数据','趋势','公众号'], collection:'收藏夹', status:'已引用',
-      words:2410,
-      excerpt:'供给还在涨，头部更新在降；用户取关第一理由是内容重复。三个数据看清公众号的当下。',
-      body:[
-        '先看供给：今年新注册的公众号数量仍在增长，但头部账号的更新频率下降了。再看需求：用户取关的理由里，“内容重复”排第一。',
-        '第三个数据是打开率，整体继续下滑，但垂直小号的打开率反而稳定在 8% 以上，说明用户不是不看，而是只看有用的。',
-        '结论不是“能不能做”，而是“值不值得做”。如果没有稳定的信息增量，做号只会变成一项高成本的自我消耗。'
-      ],
-      related:[6,9,10], topics:['公众号增长']
-    },
-    {
-      id:8,
-      title:'从 0 到 1 万粉，我拆了 12 个职场号的增长路径',
-      account:'蒙西求职记', isSelf:true, date:'2026-11-08',
-      tags:['涨粉','职场号','复盘'], collection:'灵感速记', status:'已成稿',
-      words:4200,
-      excerpt:'拆了十二个职场号，起量路径只有三种。最稳的那条，前三个月几乎看不到数据。',
-      body:[
-        '我拆了十二个从零做到一万粉的职场号，发现它们的起量路径只有三种：大号转载、垂直社群扩散、单篇爆款带动。',
-        '其中最常见的是第二种：先在三个精准社群持续输出，再把高频问题整理成文章。前三个月慢，但粉丝质量高。',
-        '共同点是更新稳定、选题聚焦、标题克制。没有一个是靠追热点起量的，热点只能放大已有基础，不能替代基础。'
-      ],
-      related:[6,11,15], topics:['公众号增长']
-    },
-    {
-      id:9,
-      title:'公众号打开率跌破 2% 后，我们改了推送时间',
-      account:'运营研究社', isSelf:false, date:'2026-10-30',
-      tags:['打开率'], collection:'未归类', status:'未用',
-      words:1870,
-      excerpt:'打开率从 3.1% 跌到 1.8%，取关率却没变。问题不在内容，在我们选错了推送时间。',
-      body:[
-        '后台数据显示，打开率从 3.1% 一路跌到 1.8%，但取关率没有明显变化。问题不在内容质量，而在推送时机。',
-        '我们把早八点改到中午十二点半，又把长文拆成两条短推送，一周后打开率回到 2.6%，读完率提升了近一倍。',
-        '经验是：先看用户活跃时段，再决定发布时间；先用短内容测试标题，再把流量导给长文。顺序反了，效果会差很多。'
-      ],
-      related:[7,10,6], topics:['公众号增长']
-    },
-    {
-      id:10,
-      title:'私域导流别再放二维码了，试试这三种路径',
-      account:'运营研究社', isSelf:false, date:'2026-10-24',
-      tags:['私域','导流','转化'], collection:'收藏夹', status:'已引用',
-      words:2630,
-      excerpt:'二维码不是难看，是路径太长。三种替代路径里，关键词回复的转化最高、成本最低。',
-      body:[
-        '二维码的问题不是难看，而是路径太长。用户要保存、退出、打开微信、扫码，每一步都在流失。',
-        '我们试了三种替代路径：文章内链跳转、关键词自动回复、评论区置顶引导。转化率最高的是关键词回复，成本也最低。',
-        '如果一定要放二维码，至少把它放在文末利益点之后，而不是开头。先给价值，再提要求，转化会自然很多。'
-      ],
-      related:[7,9,11], topics:['公众号增长']
-    },
-    {
-      id:11,
-      title:'小号互推实操：一周换来 1400 个精准关注',
-      account:'蒙西求职记', isSelf:true, date:'2026-11-02',
-      tags:['互推','涨粉','实操'], collection:'灵感速记', status:'未用',
-      words:2150,
-      excerpt:'互推看的不是粉丝量，是人群重叠。四个同赛道账号，一周换来一千四百个精准关注。',
-      body:[
-        '互推的关键不是粉丝量对等，而是人群重叠。我们选了四个同赛道但非竞品的号，粉丝在两万到五万之间。',
-        '形式是纯推荐位加一段真实使用体验，不写夸张文案。一周下来新增一千四百个关注，取关率不到 5%。',
-        '复盘下来，效果最好的是“互相解决问题”的推荐，而不是“互相夸”。读者能分辨哪句是客套，哪句是真话。'
-      ],
-      related:[6,8,10], topics:['公众号增长']
-    },
-    {
-      id:12,
-      title:'小红书爆款标题的 12 个公式（可直接套用）',
-      account:'新榜', isSelf:false, date:'2026-11-15',
-      tags:['标题公式','小红书','模板'], collection:'收藏夹', status:'已引用',
-      words:2980,
-      excerpt:'从近半年收藏最高的小红书笔记里反推，十二个可直接套用的标题公式，按使用频率排序。',
-      body:[
-        '这十二个公式不是拍脑袋想的，是从近半年收藏量最高的小红书笔记里反推出来的，按使用频率排了序。',
-        '最常用的是“数字 + 结果 + 时间”和“反常识 + 解释”，前者适合干货，后者适合观点。套用时记得替换成自己的具体场景。',
-        '公式只是骨架，真正决定点击的是细节：一个准确的数字、一个具体的对象、一个能被验证的承诺。缺一个都会显得空。'
-      ],
-      related:[13,14,15], topics:['标题写作']
-    },
-    {
-      id:13,
-      title:'我整理了 200 条 10w+ 标题，发现它们都在用这 3 个句式',
-      account:'乱翻书', isSelf:false, date:'2026-11-06',
-      tags:['标题公式','爆款','数据分析'], collection:'选题池', status:'已引用',
-      words:3340,
-      excerpt:'两百条十万加标题，高频句式只有三种。它们共同的特点是：少用形容词，把信息放在前面。',
-      body:[
-        '我把两百条十万加标题按句式做了归类，出现频率最高的三种是：提问式、对比式、结果前置式。',
-        '提问式最容易写，但也最容易空泛；对比式需要真实差距；结果前置式对数字要求高，虚报会反噬。',
-        '值得注意的是，这三种句式都很少使用形容词。它们把信息放在前面，把情绪藏在事实里，这可能是更值得学的地方。'
-      ],
-      related:[12,14,15], topics:['标题写作'], dupOf:12
-    },
-    {
-      id:14,
-      title:'标题里的数字怎么写才不土？一份克制的用法清单',
-      account:'乱翻书', isSelf:false, date:'2026-10-27',
-      tags:['标题写作'], collection:'未归类', status:'未用',
-      words:1760,
-      excerpt:'数字不土，没信息量的数字才土。三条规则，让标题里的数字更可信。',
-      body:[
-        '数字本身不土，土的是没有信息量的数字。比如“三个技巧”不如“三次改稿后，阅读量从 800 到 1.2 万”。',
-        '我给自己定了三条规则：能用具体数字就不用概数；数字要和结果绑定；一篇标题里最多出现两个数字。',
-        '另外，避免用“99%”“100%”这类绝对表述，除非真的做过完整统计。克制的数字反而更容易被相信。'
-      ],
-      related:[12,13,15], topics:['标题写作']
-    },
-    {
-      id:15,
-      title:'同一个选题，换个标题阅读量差 8 倍',
-      account:'蒙西求职记', isSelf:true, date:'2026-11-13',
-      tags:['标题写作','A/B 测试','复盘'], collection:'灵感速记', status:'已成稿',
-      words:2460,
-      excerpt:'同一篇内容、同一时间、只换标题：结果前置式的阅读量，是陈述式的八倍。',
-      body:[
-        '同一篇内容，我们准备了三个标题：一个陈述、一个提问、一个结果前置。投放时间相同，封面一致，只换标题。',
-        '24 小时后，结果前置的阅读量是陈述式的 8 倍，提问式居中。差异主要来自首屏点击，而不是读完率。',
-        '这次测试让我改掉了一个习惯：先写内容再想标题。现在会先确定标题承诺，再决定正文要交付什么。'
-      ],
-      related:[6,12,13], topics:['标题写作']
-    },
-    {
-      id:16,
-      title:'被限流后我做了什么：一次完整的申诉复盘',
-      account:'蒙西求职记', isSelf:true, date:'2026-11-19',
-      tags:['限流','申诉','平台规则'], collection:'收藏夹', status:'已引用',
-      words:3080,
-      excerpt:'文章两小时停在 300 阅读，后台没有通知。自查、申诉、第三天恢复，完整时间线复盘。',
-      body:[
-        '事情发生在周三下午，一篇正常发布的文章在两小时内阅读量停在 300，转发为 0。后台没有违规通知，但流量明显异常。',
-        '我先自查了标题、封面和正文，确认没有敏感表述，然后通过后台入口提交申诉，附上文章链接和发布记录。',
-        '第三天收到回复，判定为误伤，流量恢复。复盘下来，最有用的是保留完整截图和时间线，而不是反复提交相同申诉。'
-      ],
-      related:[17,18,9], topics:['平台规则']
-    },
-    {
-      id:17,
-      title:'微信公众平台 11 月新规解读：这 5 类内容会被降权',
-      account:'蒙西求职记', isSelf:true, date:'2026-11-17',
-      tags:['平台规则','新规','降权'], collection:'未归类', status:'未用',
-      words:2280,
-      excerpt:'五类内容被收紧：虚假收益、未标注广告、批量搬运、诱导分享、涉医疗表述。',
-      body:[
-        '新规主要收紧了五类内容：虚假收益承诺、未标注的广告、批量搬运、诱导分享和涉医疗表述。处罚从限流到封禁不等。',
-        '对普通创作者影响最大的是广告标注和诱导分享。前者要求在文首明确提示，后者包括“转发到三个群”这类话术。',
-        '建议本周内做一次历史文章抽查，重点看近三个月的商业合作稿。发现问题先改后删，保留修改记录，比事后解释更有效。'
-      ],
-      related:[16,18,9], topics:['平台规则']
-    },
-    {
-      id:18,
-      title:'视频号与公众号联动规则变了，创作者要注意这 3 点',
-      account:'影视飓风', isSelf:false, date:'2026-11-09',
-      tags:['平台规则'], collection:'灵感速记', status:'未用',
-      words:2040,
-      excerpt:'视频号权重、直播预约入口、跨账号引流限制，三个变化直接影响图文和视频的分发。',
-      body:[
-        '这次调整主要涉及三个点：视频号内容在公众号的展示权重、直播预约的入口位置，以及跨账号引流的限制。',
-        '对创作者来说，最直接的变化是图文和视频需要分别设计钩子，不能再用同一套封面和标题一稿多发。',
-        '我们的做法是把视频号当作入口，把公众号当作沉淀，两边内容不重复但互相指路。跑了两周，关注转化比之前高。'
-      ],
-      related:[16,17,7], topics:['平台规则']
-    }
+    {"id": 1, "title": "小米智能门锁 5 人脸版发布：升级 3D 人脸 + 掌静脉 + 视频通话，国补价 1799 元", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 1206, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 2, "title": "兰博基尼敞篷超跑 Temerario Spyder 登场：首次搭载可伸缩硬顶，零百加速 2.7 秒", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 516, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 3, "title": "蔚来萤火虫「片刻流金」特别版发售：首次推出天幕拉花，13.58 万元起限量 333 台", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["汽车出行"], "collection": "未归类", "status": "未用", "words": 605, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["汽车出行"]},
+    {"id": 4, "title": "动画电影《冰川时代 6：火山大冒险》发布正式预告，2027 年全球献映", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 338, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 5, "title": "英伟达回应数据泄露疑云：正调查第三方事件，未发现自身系统受影响", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["芯片算力"], "collection": "未归类", "status": "未用", "words": 404, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["芯片算力"]},
+    {"id": 6, "title": "上汽荣威官宣家越 07 纯电版 11 月 27 日上市，全系标配 800V 碳化硅平台 + 651km 续航", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["汽车出行"], "collection": "未归类", "status": "未用", "words": 796, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["汽车出行"]},
+    {"id": 7, "title": "摩托罗拉 Razr Flex 宽折叠手机渲染图曝光：绿 / 米色，内 6.9 英寸 / 外 5 英寸屏幕", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 455, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 8, "title": "李书福：吉利将协同旗下大学面向全球招收本硕博学生，培养新型全球化人才，上学即上岗", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 523, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 9, "title": "五菱缤果 Pro 新增宁德时代电芯版，将于 11 月 24 日正式上市", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 515, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 10, "title": "育碧成立 Motherbrain 专注于游戏 AI，半年员工人数减少近 1100 人", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["AI 应用"], "collection": "未归类", "status": "未用", "words": 1294, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["AI 应用"]},
+    {"id": 11, "title": "消息称 AMD \"Zen 6\" 主流桌面处理器要到 COMPUTEX 2027 后方能面世", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["芯片算力"], "collection": "未归类", "status": "未用", "words": 448, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["芯片算力"]},
+    {"id": 12, "title": "微软推送 Win11 26x00.10075 可选更新：重构搜索体验，内存占用降低 15%~20%", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["系统软件"], "collection": "未归类", "status": "未用", "words": 616, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["系统软件"]},
+    {"id": 13, "title": "OPPO Pad Air6 平板开售：2.8K 120Hz 柔光屏，国补后 2209.15 元起", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 1051, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 14, "title": "爆料者 Cyberleek 公布疑似《GTA 6》Xbox 版文件，一周内有望实现 PC 模拟运行", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 740, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 15, "title": "大众海外发布电动露营车 ID. Buzz Beach，配备 2m × 1.2m 折叠床垫", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 340, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 16, "title": "6 位 PIN 码破解从 19 年缩至 20 天：部分微软 Win11 设备 TPM 防暴力破解机制被绕过", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 1105, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 17, "title": "消息称 vivo S70 系列、iQOO 16R 手机春节前发布，主打 64Mp 旗舰级长焦、中屏轻旗舰", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 587, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 18, "title": "美光：2027 年存储芯片已有 75% 库存售罄，供需形势会比今年更加紧张", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["芯片算力"], "collection": "未归类", "status": "未用", "words": 639, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["芯片算力"]},
+    {"id": 19, "title": "行业首次：小鹏 2026 科技日将首发「图灵 AI 共驾」，把智能辅助驾驶能力赋能人驾", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["汽车出行"], "collection": "未归类", "status": "未用", "words": 1112, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["汽车出行"]},
+    {"id": 20, "title": "OpenAI 邀部分 Plus 用户体验 dots AI 智能体，移动版 ChatGPT 将为其设独立标签页", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["AI 应用"], "collection": "未归类", "status": "未用", "words": 652, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["AI 应用"]},
+    {"id": 21, "title": "国家邮政局：1-10 月快递业务量完成 1688.2 亿件，同比增长 3.8%，10 月下滑 0.5%", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 915, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 22, "title": "微软确认 Win11 26H2 已面向所有符合条件设备推送，24H2、25H2 陆续升级", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 893, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 23, "title": "国内推出首个智能座舱 AI 分级评价体系，共分为 C1 到 C5 五级", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["AI 应用"], "collection": "未归类", "status": "未用", "words": 706, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["AI 应用"]},
+    {"id": 24, "title": "苹果关闭全球最大粉丝社区，Apple 支持社区结束 28 年运营今日永久关闭", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 565, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 25, "title": "特斯拉副总裁陶琳：马斯克 24 小时中国行专门从深圳飞到上海，对上海超级工厂赞赏有加", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["汽车出行"], "collection": "未归类", "status": "未用", "words": 826, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["汽车出行"]},
+    {"id": 26, "title": "全国首个独立运行的兆瓦级海岛微电网投运", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 410, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 27, "title": "OpenAI 开放 GPT-Live-1.1 API：支持实时双向对话，智能体可边聊天边处理复杂任务", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["AI 应用"], "collection": "未归类", "status": "未用", "words": 802, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["AI 应用"]},
+    {"id": 28, "title": "蔚来乐道 L70 伪装车高清谍照疑曝光，乐道 SUV 家族再上新", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["汽车出行"], "collection": "未归类", "status": "未用", "words": 656, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["汽车出行"]},
+    {"id": 29, "title": "蓝箭航天朱雀三号“二手回收”火箭发动机完成试车，具备再次使用条件", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 727, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 30, "title": "最高 6% 返现：苹果启动 Apple Card 拉新活动，首年最多可拿 1000 美元", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 861, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 31, "title": "曝 Meta 全新 AI 硬件 Muse Charm 售 300 美元，附赠一年 5G 流量", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["AI 应用"], "collection": "未归类", "status": "未用", "words": 894, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["AI 应用"]},
+    {"id": 32, "title": "三星电子任命存储与移动业务新负责人，联席 CEO 全永铉、卢泰文留任", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 496, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 33, "title": "苹果 watchOS 27.3 Beta 扩充 Siri Modular 表盘，样式总数达 5 款", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 745, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 34, "title": "大逃杀电影《饥饿游戏：收获日出》今日内地上映，片长 158 分钟", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 394, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 35, "title": "只改一处代码，谷歌 AI 智能体优化 Harness 后任务成功率提升 8 倍", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["AI 应用"], "collection": "未归类", "status": "未用", "words": 1469, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["AI 应用"]},
+    {"id": 36, "title": "尽管遭强烈反对：谷歌仍将在 2027 年 1 月全球推广 Android 开发者验证计划，覆盖 Google Play、三星、荣耀、OPPO、vivo、小米、传音", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 1385, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 37, "title": "摩根大通：计划购买苹果 iPhone 18 Pro/iPhone Duo 等的受访群体中，97% 年底前购买", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 909, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 38, "title": "铁路 12306 App 信息通知服务今日起优化：新增候补兑现情况和列车运行调整等", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 878, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 39, "title": "商务部：1-10 月重点平台智能眼镜销售额增长 1 倍，具身智能机器人销售额增长 25.2%", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 641, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 40, "title": "绿联首款 60W AVS 屏显充电器发售：可智能识别苹果 iPhone 18 Pro Max、iPhone Duo 等机型", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 823, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 41, "title": "在 Apple TV 看女车手飙车：苹果将直播 F1 Academy，上海站明年 4 月开启", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 673, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 42, "title": "OPPO Watch 5 轻薄小方表开售：机身厚 9.2mm、重 25g，国补后 764.15 元起", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 811, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 43, "title": "Visa、万事达卡接连通报网络攻击事件：部分用户数据泄露，支付网络未受影响", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 974, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 44, "title": "摩根大通陷入数据泄露风波：黑客宣称已掌握 1.6 万个客户邮箱", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 519, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 45, "title": "吉利星越 L PLUS 预计 12 月上市，搭 2.0T 混动、Flyme Auto 座舱，预售 15.77 万元起", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["行业动态"], "collection": "未归类", "status": "未用", "words": 903, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["行业动态"]},
+    {"id": 46, "title": "IT早报 1120：Anthropic 完成 813 亿美元史上最大规模 IPO；苹果 App Store 惊现安卓虚拟机应用；比亚迪发布方向盘可折叠的方程豹钛 9...", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 3429, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 47, "title": "苹果 macOS 27.3 Beta 2 公测版发布：扩展 Siri AI 能力，强化完全磁盘访问权限管理", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 1132, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 48, "title": "消息称苹果 iPhone 摄影关键人物麦考马克上月退休，曾主导 8 年影像研发", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 487, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 49, "title": "OPPO Reno17 系列手机开售：全焦段 4K 超清长实况，3599 元起（国补后 3099 元起）", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["手机数码"], "collection": "未归类", "status": "未用", "words": 1304, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["手机数码"]},
+    {"id": 50, "title": "微软携手英伟达升级云 PC 体验：两路 4K 60 帧画面，2027 年预览上线", "account": "IT之家", "isSelf": false, "date": "2026-11-20", "tags": ["芯片算力"], "collection": "未归类", "status": "未用", "words": 1065, "excerpt": "", "body": ["（该篇仅有标题与元数据，正文未采集）"], "related": [], "topics": ["芯片算力"]}
   ];
 
   /* ============ 常量 ============ */
   var COLLECTIONS = ['未归类','收藏夹','选题池','灵感速记'];
-  var ACCOUNTS = ['蒙西求职记','影视飓风','乱翻书','新榜','运营研究社','差评'];
-  var TOPICS = ['影视资源','公众号增长','标题写作','平台规则'];
+  var ACCOUNTS = ['IT之家'];
+  var TOPICS = ['手机数码','芯片算力','汽车出行','AI 应用','系统软件','行业动态'];
   var SUGGEST_TAGS = ['影视资源','公众号','标题公式','平台规则','选题模板','待精读'];
   var STATUS_CLASS = {'未用':'','已引用':'cited','已成稿':'drafted'};
 

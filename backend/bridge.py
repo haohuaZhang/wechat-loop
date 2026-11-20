@@ -70,22 +70,140 @@ def _load_json(path: Path, default):
         return default
 
 
-def _save_json(path: Path, data) -> None:
+def _atomic_write_text(path: Path, text: str) -> None:
+    """tmp → fsync → os.replace 原子写，避免半截文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = path.parent / f".{path.name}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
+def _save_json(path: Path, data) -> None:
+    _atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
+
+
+# ---- 知识库 schema v2：幂等迁移 ----
+
+_KB_LOCK = threading.RLock()
+DEFAULT_COLLECTIONS = {"favorites": "收藏夹", "ideas": "选题池"}
+
+
+def _article_hash(item: dict) -> str:
+    """文章指纹：md5(url)[:12]，无 url 用标题 slug。"""
+    import hashlib
+
+    url = str(item.get("url") or "").strip()
+    if url:
+        return hashlib.md5(url.encode("utf-8")).hexdigest()[:12]
+    return _kb_slug(str(item.get("title") or ""))
+
+
+def _quality_of(item: dict) -> dict:
+    """简易质量分（0-100）+ 标记位，不依赖外部模型。"""
+    try:
+        wc = int(item.get("word_count") or 0)
+    except (TypeError, ValueError):
+        wc = 0
+    title = str(item.get("title") or "")
+    keywords = item.get("keywords")
+    score = 60 + min(wc / 100, 25) + (10 if len(title) >= 10 else 0) + (5 if keywords else 0)
+    flags: list[str] = []
+    if wc < 300:
+        flags.append("thin")
+    if wc < 50:
+        flags.append("no_body")
+    if not keywords:
+        flags.append("no_keywords")
+    return {"score": int(round(min(100, score))), "flags": flags}
+
+
+def _migrate_kb(data: dict) -> dict:
+    """把任意版本的 KB 补齐到 schema v2；重复调用结果不变（幂等）。"""
+    data["schema"] = 2
+    cols = data.get("collections")
+    if not isinstance(cols, dict) or not cols:
+        data["collections"] = dict(DEFAULT_COLLECTIONS)
+    if not isinstance(data.get("views"), list):
+        data["views"] = []
+
+    articles = data.get("articles")
+    if isinstance(articles, list):
+        items = articles
+    elif isinstance(articles, dict):
+        items = list(articles.values())
+    else:
+        items = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if not isinstance(item.get("tags"), list):
+            item["tags"] = []
+        if not isinstance(item.get("collections"), list):
+            item["collections"] = []
+        if item.get("stage") not in ("unused", "cited", "drafted"):
+            item["stage"] = "cited" if item.get("used_as_source") else "unused"
+        if "used_at" not in item:
+            item["used_at"] = None
+        quality = item.get("quality")
+        if not isinstance(quality, dict):
+            item["quality"] = _quality_of(item)
+        else:
+            quality.setdefault("flags", [])
+            quality.setdefault("score", _quality_of(item)["score"])
+        item.setdefault("hash", _article_hash(item))
+    return data
+
+
+def _load_kb(path: Path | None = None) -> dict:
+    """读取并迁移 KB 到 schema v2；只有内容真正变化才原子写回。
+
+    首次迁移前把原文件备份为 <kb>.v1.bak；重复调用零 diff。
+    """
+    p = Path(path) if path is not None else _active_kb_path()
+    with _KB_LOCK:
+        raw = _load_json(p, None)
+        if raw is None and p.exists():
+            # 文件存在但解析失败：不覆盖原文件，返回空结构（只读降级）
+            return _migrate_kb({"version": "1.0", "name": p.stem,
+                                "accounts": {}, "articles": {}})
+        if isinstance(raw, list):
+            raw = {"version": "1.0", "accounts": {}, "articles": raw}
+        elif not isinstance(raw, dict):
+            raw = {"version": "1.0", "name": p.stem, "accounts": {}, "articles": {}}
+        before = json.dumps(raw, ensure_ascii=False, sort_keys=True, default=str)
+        data = _migrate_kb(raw)
+        after = json.dumps(data, ensure_ascii=False, sort_keys=True, default=str)
+        if p.exists() and before != after:
+            import shutil
+
+            bak = p.with_name(p.name + ".v1.bak")
+            if not bak.exists():
+                try:
+                    shutil.copy2(p, bak)
+                except OSError:
+                    pass
+            _save_json(p, data)
+        return data
+
+
+def _save_kb(path: Path, data: dict) -> None:
+    """保存 KB（先迁移，再原子写）。"""
+    with _KB_LOCK:
+        _save_json(path, _migrate_kb(data))
 
 
 def _kb_count(path: Path) -> int:
     """统计知识库文章数：兼容 list 与 {articles: ...} 两种结构"""
     try:
-        data = _load_json(path, None)
+        data = _load_kb(path)
     except Exception:
         return 0
-    if isinstance(data, dict):
-        articles = data.get("articles")
-        return len(articles) if isinstance(articles, (list, dict)) else 0
-    if isinstance(data, list):
-        return len(data)
+    articles = data.get("articles")
+    if isinstance(articles, (list, dict)):
+        return len(articles)
     return 0
 
 
@@ -110,7 +228,7 @@ def _discover_kbs() -> list[dict]:
     for f in sorted(kb_sub_dir.glob("*.json")):
         kb_id = f.stem
         count = _kb_count(f)
-        raw = _load_json(f, {})
+        raw = _load_kb(f)
         display = raw.get("name") if isinstance(raw, dict) else None
         kbs.append({
             "id": kb_id,
@@ -179,7 +297,7 @@ def create_knowledge_base():
             return jsonify({"error": f"知识库文件已存在：{path_str}"}), 409
 
         full_path.parent.mkdir(parents=True, exist_ok=True)
-        _save_json(full_path, {"version": 1, "name": name, "articles": {}})
+        _save_kb(full_path, {"version": 1, "name": name, "articles": {}})
 
         kb_id = full_path.stem
         return jsonify({
@@ -306,9 +424,7 @@ def _import_sources_into_kb(articles: list[dict], kb_path: Path) -> dict:
     import re
     from datetime import datetime, timezone
 
-    kb = _load_json(kb_path, {"version": "1.0", "accounts": {}, "articles": {}})
-    if not isinstance(kb, dict):
-        kb = {"version": "1.0", "accounts": {}, "articles": {}}
+    kb = _load_kb(kb_path)
     kb.setdefault("accounts", {})
     kb.setdefault("articles", {})
 
@@ -367,7 +483,7 @@ def _import_sources_into_kb(articles: list[dict], kb_path: Path) -> dict:
         added += 1
 
     if added:
-        _save_json(kb_path, kb)
+        _save_kb(kb_path, kb)
     return {
         "added": added,
         "skipped": skipped,
@@ -385,7 +501,7 @@ def kb_import_sources():
     try:
         sources = _scan_collected_sources()
         kb_path = _active_kb_path()
-        kb = _load_json(kb_path, {"articles": {}})
+        kb = _load_kb(kb_path)
         existing = set((kb.get("articles") or {}).keys()) if isinstance(kb, dict) else set()
         to_import = 0
         for s in sources:
@@ -441,7 +557,7 @@ def _active_kb_path() -> Path:
 
 def _kb_articles() -> list[dict]:
     """把两种 KB 结构（dict.articles / list）统一成文章列表"""
-    data = _load_json(_active_kb_path(), {})
+    data = _load_kb(_active_kb_path())
     out: list[dict] = []
     if isinstance(data, dict):
         for aid, meta in (data.get("articles") or {}).items():
@@ -449,8 +565,6 @@ def _kb_articles() -> list[dict]:
                 item = dict(meta)
                 item.setdefault("id", aid)
                 out.append(item)
-    elif isinstance(data, list):
-        out = [dict(x) for x in data if isinstance(x, dict)]
     for i, item in enumerate(out):
         item.setdefault("id", f"article_{i}")
     return out
@@ -482,8 +596,23 @@ def _snippet(text: str, size: int = 110) -> str:
     return plain[:size] + ("…" if len(plain) > size else "")
 
 
+def _term_set(value) -> set[str]:
+    """把 tags/keywords 统一成小写字符串集合（用于相关推荐/去重）。"""
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return set()
+    return {str(x).strip().lower() for x in value if str(x).strip()}
+
+
 def _kb_item_brief(item: dict) -> dict:
     content = _article_content(item)
+    stage = item.get("stage")
+    if stage not in ("unused", "cited", "drafted"):
+        stage = "cited" if item.get("used_as_source") else "unused"
+    quality = item.get("quality")
+    if not isinstance(quality, dict):
+        quality = _quality_of(item)
     return {
         "id": item.get("id"),
         "title": item.get("title") or "(无标题)",
@@ -492,6 +621,10 @@ def _kb_item_brief(item: dict) -> dict:
         "url": item.get("url") or "",
         "topics": item.get("topics") or [],
         "keywords": item.get("keywords") or [],
+        "tags": item.get("tags") or [],
+        "status": stage,
+        "collections": item.get("collections") or [],
+        "quality": quality,
         "wordCount": item.get("word_count") or (len(content) if content else 0),
         "usedAsSource": bool(item.get("used_as_source")),
         "hasContent": bool(content),
@@ -514,19 +647,23 @@ def _kb_arg(name: str, encoded_name: str, default: str = "") -> str:
 
 @app.route("/api/kb/articles", methods=["GET"])
 def kb_articles():
-    """检索知识库：?qb=(base64) 或 ?q= 关键词 / ab、tb / sort / limit / offset"""
+    """检索知识库：?q/qb、account/ab、tag/tb、status、collection、sort、limit、offset"""
     from flask import jsonify, request
 
     try:
         q = _kb_arg("q", "qb").strip().lower()
         account = _kb_arg("account", "ab").strip()
         tag = _kb_arg("tag", "tb").strip()
-        sort = request.args.get("sort") or "date"
+        status = (request.args.get("status") or "").strip()
+        collection = _kb_arg("collection", "cb").strip()
+        sort = (request.args.get("sort") or "date_desc").strip()
         try:
-            limit = max(1, min(200, int(request.args.get("limit") or 50)))
+            limit = max(1, min(500, int(request.args.get("limit") or 50)))
             offset = max(0, int(request.args.get("offset") or 0))
         except ValueError:
             return jsonify({"error": "limit/offset 必须是整数"}), 400
+        if status and status not in ("unused", "cited", "drafted"):
+            return jsonify({"error": "status 只能是 unused/cited/drafted"}), 400
 
         items = _kb_articles()
         briefs = [_kb_item_brief(x) for x in items]
@@ -534,26 +671,38 @@ def kb_articles():
         if account and account != "all":
             briefs = [b for b in briefs if b["account"] == account]
         if tag:
-            briefs = [b for b in briefs if tag in b["topics"] or tag in b["keywords"]]
+            briefs = [b for b in briefs
+                      if tag in b["tags"] or tag in b["topics"] or tag in b["keywords"]]
+        if status:
+            briefs = [b for b in briefs if b["status"] == status]
+        if collection == "__none__":
+            briefs = [b for b in briefs if not b["collections"]]
+        elif collection:
+            # 集合在条目里存 id；前端展示与筛选用名称，这里两种都认
+            cid = _resolve_collection(_load_kb(), collection)
+            briefs = [b for b in briefs if cid in b["collections"]]
         if q:
             def hit(b: dict) -> bool:
                 haystack = " ".join([
-                    b["title"], b["snippet"], " ".join(b["topics"]), " ".join(b["keywords"]),
+                    b["title"], b["snippet"], " ".join(b["topics"]),
+                    " ".join(b["keywords"]), " ".join(b["tags"]),
                 ]).lower()
                 return q in haystack
             briefs = [b for b in briefs if hit(b)]
 
-        if sort == "words":
+        if sort in ("words", "words_desc"):
             briefs.sort(key=lambda b: b["wordCount"], reverse=True)
-            date_source = briefs
+        elif sort == "words_asc":
+            briefs.sort(key=lambda b: b["wordCount"])
+        elif sort == "date_asc":
+            briefs.sort(key=lambda b: b["publishDate"])
         elif sort == "title":
             briefs.sort(key=lambda b: b["title"])
-            date_source = briefs
-        else:
-            date_source = sorted(briefs, key=lambda b: b["publishDate"], reverse=True)
+        else:  # date_desc（默认）
+            briefs.sort(key=lambda b: b["publishDate"], reverse=True)
 
-        total = len(date_source)
-        page = date_source[offset:offset + limit]
+        total = len(briefs)
+        page = briefs[offset:offset + limit]
 
         accounts = {}
         topics = {}
@@ -577,16 +726,61 @@ def kb_articles():
 
 @app.route("/api/kb/article/<article_id>", methods=["GET"])
 def kb_article_detail(article_id: str):
-    """单篇详情（含正文）"""
+    """单篇详情（含正文、相关推荐、重复检测）"""
     from flask import jsonify
 
     try:
-        for item in _kb_articles():
-            if str(item.get("id")) == article_id:
-                brief = _kb_item_brief(item)
-                brief["content"] = _article_content(item)
-                return jsonify(brief)
-        return jsonify({"error": f"知识库里没有这篇文章：{article_id}"}), 404
+        items = _kb_articles()
+        target = next((x for x in items if str(x.get("id")) == article_id), None)
+        if target is None:
+            return jsonify({"error": f"知识库里没有这篇文章：{article_id}"}), 404
+
+        brief = _kb_item_brief(target)
+        brief["content"] = _article_content(target)
+
+        t_tags = _term_set(target.get("tags"))
+        t_kws = _term_set(target.get("keywords"))
+        t_hash = target.get("hash") or _article_hash(target)
+
+        related: list[dict] = []
+        dup: dict | None = None
+        for other in items:
+            if str(other.get("id")) == article_id:
+                continue
+            shared_tags = _term_set(other.get("tags")) & t_tags
+            shared_kws = _term_set(other.get("keywords")) & t_kws
+            if shared_tags or shared_kws:
+                parts = []
+                if shared_tags:
+                    parts.append("共同标签：" + "、".join(sorted(shared_tags)[:3]))
+                if shared_kws:
+                    parts.append("共同关键词：" + "、".join(sorted(shared_kws)[:3]))
+                related.append({
+                    "id": other.get("id"),
+                    "title": other.get("title") or "(无标题)",
+                    "reason": "；".join(parts),
+                    "_score": len(shared_tags) * 2 + len(shared_kws),
+                })
+
+            o_hash = other.get("hash") or _article_hash(other)
+            if t_hash and o_hash == t_hash:
+                dup = {"id": other.get("id"),
+                       "title": other.get("title") or "(无标题)",
+                       "similarity": 1.0}
+            else:
+                o_kws = _term_set(other.get("keywords"))
+                union = o_kws | t_kws
+                if union:
+                    sim = len(o_kws & t_kws) / len(union)
+                    if sim >= 0.75 and (dup is None or sim > dup.get("similarity", 0)):
+                        dup = {"id": other.get("id"),
+                               "title": other.get("title") or "(无标题)",
+                               "similarity": round(sim, 3)}
+
+        related.sort(key=lambda r: -r["_score"])
+        brief["related"] = [{k: r[k] for k in ("id", "title", "reason")} for r in related[:5]]
+        brief["duplicateOf"] = dup
+        return jsonify(brief)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -649,6 +843,415 @@ def kb_export():
         md = "\n\n---\n\n".join(chunks)
         return Response(md, mimetype="text/markdown; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="kb-{stamp}.md"'})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---- 知识库工作台：统计 / 批量 / 集合 / 视图 / 检索 ----
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_iso(value):
+    from datetime import datetime, timezone
+
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _collection_items(kb: dict) -> list[dict]:
+    """collections 既可能是 {id: name} 也可能是 {id: {name}}，统一成列表。"""
+    cols = kb.get("collections") or {}
+    out: list[dict] = []
+    if isinstance(cols, dict):
+        for cid, meta in cols.items():
+            name = meta.get("name") if isinstance(meta, dict) else (meta or cid)
+            out.append({"id": str(cid), "name": str(name or cid)})
+    elif isinstance(cols, list):
+        for c in cols:
+            if isinstance(c, dict) and c.get("id"):
+                out.append({"id": str(c["id"]), "name": str(c.get("name") or c["id"])})
+    return out
+
+
+def _resolve_collection(kb: dict, value) -> str:
+    """把集合 id 或显示名统一解析成 id；未知值原样返回（由调用方决定是否报错）。"""
+    v = str(value or "").strip()
+    for c in _collection_items(kb):
+        if v == c["id"] or v == c["name"]:
+            return c["id"]
+    return v
+
+
+def _unlink_kb_md(rel: str) -> bool:
+    """只删 loop/kb/ 下的正文文件，防止误删外部路径。"""
+    if not rel:
+        return False
+    p = (LOOP_ROOT / rel).resolve()
+    base = (KB_DIR / "kb").resolve()
+    try:
+        p.relative_to(base)
+    except ValueError:
+        return False
+    try:
+        if p.is_file():
+            p.unlink()
+            return True
+    except OSError:
+        return False
+    return False
+
+
+@app.route("/api/kb/stats", methods=["GET"])
+def kb_stats():
+    """知识库工作台统计"""
+    from datetime import datetime, timedelta, timezone
+
+    from flask import jsonify
+
+    try:
+        kb = _load_kb()
+        articles = kb.get("articles") or {}
+        items = list(articles.values()) if isinstance(articles, dict) else list(articles)
+
+        counts = {"unused": 0, "cited": 0, "drafted": 0}
+        by_account: dict[str, int] = {}
+        by_tag: dict[str, int] = {}
+        col_counts: dict[str, int] = {}
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        week_added = 0
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            stage = item.get("stage")
+            if stage not in counts:
+                stage = "cited" if item.get("used_as_source") else "unused"
+            counts[stage] += 1
+
+            key = str(item.get("source_account") or item.get("account") or "未知")
+            by_account[key] = by_account.get(key, 0) + 1
+            for t in item.get("tags") or []:
+                t = str(t)
+                if t:
+                    by_tag[t] = by_tag.get(t, 0) + 1
+            for c in item.get("collections") or []:
+                col_counts[str(c)] = col_counts.get(str(c), 0) + 1
+            ts = _parse_iso(item.get("created_at"))
+            if ts and ts >= cutoff:
+                week_added += 1
+
+        total = sum(counts.values())
+        accounts_meta = kb.get("accounts") if isinstance(kb.get("accounts"), dict) else {}
+        by_account_out = []
+        for key, count in sorted(by_account.items(), key=lambda kv: (-kv[1], kv[0])):
+            meta = accounts_meta.get(key) or {}
+            name = meta.get("name") if isinstance(meta, dict) else None
+            by_account_out.append({"key": key, "name": name or key, "count": count})
+
+        collections = [
+            {"id": c["id"], "name": c["name"], "count": col_counts.get(c["id"], 0)}
+            for c in _collection_items(kb)
+        ]
+        return jsonify({
+            "total": total,
+            "unused": counts["unused"],
+            "cited": counts["cited"],
+            "drafted": counts["drafted"],
+            "weekAdded": week_added,
+            "citedRate": round((counts["cited"] + counts["drafted"]) / total, 4) if total else 0,
+            "byAccount": by_account_out,
+            "byTag": [{"tag": k, "count": v}
+                      for k, v in sorted(by_tag.items(), key=lambda kv: (-kv[1], kv[0]))],
+            "collections": collections,
+            "views": kb.get("views") or [],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/batch", methods=["POST"])
+def kb_batch():
+    """批量操作：tag / untag / move / remove / stage"""
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        ids = body.get("ids")
+        op = (body.get("op") or "").strip()
+        value = body.get("value")
+        if not isinstance(ids, list) or not ids:
+            return jsonify({"error": "ids 必须是非空数组"}), 400
+        if op not in ("tag", "untag", "move", "remove", "stage"):
+            return jsonify({"error": "op 只能是 tag/untag/move/remove/stage"}), 400
+        if op == "stage" and value not in ("unused", "cited", "drafted"):
+            return jsonify({"error": "stage 的 value 只能是 unused/cited/drafted"}), 400
+
+        kb_path = _active_kb_path()
+        kb = _load_kb(kb_path)
+        articles = kb.get("articles")
+        if not isinstance(articles, dict):
+            return jsonify({"error": "知识库结构不支持批量操作"}), 400
+
+        if op == "move" and value not in (None, ""):
+            if str(value) == "__none__":
+                value = ""
+            else:
+                cid = _resolve_collection(kb, value)
+                if cid not in {c["id"] for c in _collection_items(kb)}:
+                    return jsonify({"error": f"集合不存在：{value}"}), 400
+                value = cid
+
+        values = value if isinstance(value, list) else [value]
+        values = [str(v) for v in values if v is not None and str(v) != ""]
+        if op in ("tag", "untag") and not values:
+            return jsonify({"error": "tag/untag 需要非空 value"}), 400
+
+        updated = 0
+        removed = 0
+        now = _now_iso()
+        for raw_id in ids:
+            aid = str(raw_id)
+            item = articles.get(aid)
+            if not isinstance(item, dict):
+                continue
+            if op == "tag":
+                tags = item.get("tags") if isinstance(item.get("tags"), list) else []
+                for v in values:
+                    if v not in tags:
+                        tags.append(v)
+                item["tags"] = tags
+            elif op == "untag":
+                item["tags"] = [t for t in (item.get("tags") or []) if str(t) not in values]
+            elif op == "move":
+                cols = item.get("collections") if isinstance(item.get("collections"), list) else []
+                target = "" if value in (None, "") else str(value)
+                if target:
+                    if target not in cols:
+                        cols.append(target)
+                else:
+                    cols = []
+                item["collections"] = cols
+            elif op == "stage":
+                item["stage"] = value
+                item["used_as_source"] = value != "unused"
+                if value == "drafted":
+                    item["used_at"] = now
+            elif op == "remove":
+                rel = str(item.get("local_md_path") or "").strip()
+                del articles[aid]
+                removed += 1
+                _unlink_kb_md(rel)
+                continue
+            updated += 1
+
+        if updated or removed:
+            _save_kb(kb_path, kb)
+        return jsonify({"updated": updated, "removed": removed, "total": len(articles)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/collections", methods=["GET"])
+def kb_collections():
+    from flask import jsonify
+
+    try:
+        kb = _load_kb()
+        articles = kb.get("articles") or {}
+        items = list(articles.values()) if isinstance(articles, dict) else list(articles)
+        counts: dict[str, int] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for c in item.get("collections") or []:
+                counts[str(c)] = counts.get(str(c), 0) + 1
+        return jsonify([
+            {"id": c["id"], "name": c["name"], "count": counts.get(c["id"], 0)}
+            for c in _collection_items(kb)
+        ])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/collections", methods=["POST"])
+def kb_collection_create():
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        name = (body.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "缺少 name"}), 400
+        kb_path = _active_kb_path()
+        kb = _load_kb(kb_path)
+        cols = kb.get("collections")
+        if not isinstance(cols, dict):
+            cols = {}
+        base = _kb_slug(name)
+        cid = base
+        n = 2
+        while cid in cols:
+            cid = f"{base}-{n}"
+            n += 1
+        cols[cid] = name
+        kb["collections"] = cols
+        _save_kb(kb_path, kb)
+        return jsonify({"id": cid, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/views", methods=["GET"])
+def kb_views():
+    from flask import jsonify
+
+    try:
+        return jsonify(_load_kb().get("views") or [])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/views", methods=["POST"])
+def kb_view_create():
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        name = (body.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "缺少 name"}), 400
+        kb_path = _active_kb_path()
+        kb = _load_kb(kb_path)
+        views = kb.get("views") if isinstance(kb.get("views"), list) else []
+        base = _kb_slug(name)
+        vid = base
+        n = 2
+        existing = {str(v.get("id")) for v in views if isinstance(v, dict)}
+        while vid in existing:
+            vid = f"{base}-{n}"
+            n += 1
+        views.append({"id": vid, "name": name,
+                      "filter": body["filter"] if "filter" in body else {}})
+        kb["views"] = views
+        _save_kb(kb_path, kb)
+        return jsonify(views)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def _kb_index_module():
+    import importlib
+
+    scripts = str(LOOP_ROOT / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    return importlib.import_module("kb_index")
+
+
+def _highlight(text: str, q: str, size: int = 110) -> str:
+    import re
+
+    plain = _snippet(text, 10000)
+    idx = plain.lower().find(q.lower())
+    if idx < 0:
+        return plain[:size] + ("…" if len(plain) > size else "")
+    start = max(0, idx - size // 3)
+    end = min(len(plain), idx + len(q) + size)
+    snip = plain[start:end]
+    snip = re.sub(re.escape(q), lambda m: f"<mark>{m.group(0)}</mark>",
+                  snip, count=1, flags=re.IGNORECASE)
+    if start > 0:
+        snip = "…" + snip
+    if end < len(plain):
+        snip = snip + "…"
+    return snip
+
+
+def _kb_fallback_search(q: str, briefs: list[dict], limit: int,
+                        content_by_id: dict[str, str] | None = None) -> list[dict]:
+    """FTS5 不可用时的降级检索：标题/标签/正文子串打分。"""
+    ql = q.lower()
+    content_by_id = content_by_id or {}
+    out: list[dict] = []
+    for b in briefs:
+        content = content_by_id.get(str(b["id"])) or b["snippet"]
+        title = b["title"].lower()
+        tags = " ".join(b["tags"]).lower()
+        kws = " ".join(b["keywords"]).lower()
+        body = content.lower()
+        if ql not in title and ql not in tags and ql not in kws and ql not in body:
+            continue
+        score = (title.count(ql) * 5 + tags.count(ql) * 3
+                 + kws.count(ql) * 2 + body.count(ql))
+        if score <= 0:
+            continue
+        out.append({
+            "id": b["id"],
+            "title": b["title"],
+            "account": b["account"],
+            "publishDate": b["publishDate"],
+            "tags": b["tags"],
+            "score": float(score),
+            "snippet": _highlight(content, q),
+        })
+    out.sort(key=lambda x: -x["score"])
+    return out[:limit]
+
+
+@app.route("/api/kb/search", methods=["GET"])
+def kb_search():
+    """全文检索：优先 SQLite FTS5，异常时降级为子串打分。"""
+    from flask import jsonify, request
+
+    try:
+        q = _kb_arg("q", "qb").strip()
+        try:
+            limit = max(1, min(200, int(request.args.get("limit") or 50)))
+        except ValueError:
+            return jsonify({"error": "limit 必须是整数"}), 400
+        if len(q) < 2:
+            return jsonify({"items": [], "total": 0, "mode": "fts"})
+
+        raw_items = _kb_articles()
+        briefs = [_kb_item_brief(x) for x in raw_items]
+        by_id = {str(b["id"]): b for b in briefs}
+        content_by_id = {str(x.get("id")): _article_content(x) for x in raw_items}
+
+        engine_ok = True
+        hits: list[dict] = []
+        try:
+            hits = _kb_index_module().search(_active_kb_path(), q, limit=limit)
+        except Exception:
+            engine_ok = False
+
+        if engine_ok:
+            items = []
+            for h in hits:
+                b = by_id.get(str(h["id"]))
+                if not b:
+                    continue
+                items.append({
+                    "id": b["id"],
+                    "title": b["title"],
+                    "account": b["account"],
+                    "publishDate": b["publishDate"],
+                    "tags": b["tags"],
+                    "score": h["score"],
+                    "snippet": h["snippet"],
+                })
+            return jsonify({"items": items, "total": len(items), "mode": "fts"})
+
+        items = _kb_fallback_search(q, briefs, limit, content_by_id)
+        return jsonify({"items": items, "total": len(items), "mode": "fallback"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1494,6 +2097,31 @@ def loop_draft():
             html_path.write_text(_fallback_md_to_html(markdown), encoding="utf-8")
 
         html = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+
+        # 明确拿到引用文章 id 时才标记 cited，拿不到就跳过（不臆造）
+        raw_ids = body.get("sourceIds") or body.get("source_ids") or body.get("articleIds") or []
+        source_ids = [str(x) for x in raw_ids] if isinstance(raw_ids, list) else []
+        cited: list[str] = []
+        cite_note = "未提供引用文章 id，跳过知识库状态更新"
+        if source_ids:
+            kb_path = _active_kb_path()
+            kb = _load_kb(kb_path)
+            articles = kb.get("articles") if isinstance(kb.get("articles"), dict) else {}
+            now = _now_iso()
+            for aid in source_ids:
+                item = articles.get(aid)
+                if not isinstance(item, dict):
+                    continue
+                item["stage"] = "cited"
+                item["used_as_source"] = True
+                item["used_at"] = now
+                cited.append(aid)
+            if cited:
+                _save_kb(kb_path, kb)
+                cite_note = f"已把 {len(cited)} 篇引用文章置为 cited"
+            else:
+                cite_note = "提供的引用 id 在知识库中都不存在，未更新"
+
         return jsonify({
             "ok": True,
             "date": date_tag,
@@ -1505,6 +2133,8 @@ def loop_draft():
             "html": html,
             "bytes": len(html),
             "previewUrl": _loop_file_url(html_path),
+            "cited": cited,
+            "citeNote": cite_note,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

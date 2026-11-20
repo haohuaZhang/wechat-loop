@@ -442,6 +442,12 @@ export const api = {
     if (params.q) qs.set("qb", b64url(params.q))
     if (params.account && params.account !== "all") qs.set("ab", b64url(params.account))
     if (params.tag && params.tag !== "all") qs.set("tb", b64url(params.tag))
+    if (params.status && params.status !== "all") qs.set("status", String(params.status))
+    if (params.collection && params.collection !== "all") {
+      // 集合名可能含中文，同时给 plain 与 base64 两个别名，后端任取其一
+      qs.set("collection", String(params.collection))
+      qs.set("cb", b64url(String(params.collection)))
+    }
     if (params.sort) qs.set("sort", String(params.sort))
     if (params.limit) qs.set("limit", String(params.limit))
     if (params.offset) qs.set("offset", String(params.offset))
@@ -467,6 +473,10 @@ export const api = {
     if (params.q) qs.set("qb", b64url(params.q))
     if (params.account && params.account !== "all") qs.set("ab", b64url(params.account))
     if (params.tag && params.tag !== "all") qs.set("tb", b64url(params.tag))
+    if (params.status && params.status !== "all") qs.set("status", String(params.status))
+    if (params.collection && params.collection !== "all") qs.set("collection", String(params.collection))
+    if (params.sort) qs.set("sort", String(params.sort))
+    if (Array.isArray(params.ids) && params.ids.length) qs.set("ids", params.ids.join(","))
     return `/api/kb/export?${qs.toString()}`
   },
 
@@ -1766,6 +1776,145 @@ export const api = {
       return { taskId: res.task_id, message: res.message || `已启动下载任务，共 ${payload.length} 篇` }
     } catch (err) {
       throw toError(err, "启动批量下载失败")
+    }
+  },
+
+  // ── 知识库工作台 ──────────────────────────────────────
+
+  /**
+   * 知识库统计
+   * GET /api/kb/stats → {total, unused, cited, drafted, weekAdded, citedRate,
+   *   byAccount:[{key,name,count}], byTag:[{tag,count}], collections:[{id,name,count}], views}
+   */
+  async kbStats() {
+    if (USE_MOCK) {
+      return {
+        total: 128, unused: 74, cited: 38, drafted: 16, weekAdded: 12, citedRate: 0.42,
+        byAccount: [{ key: "game", name: "游戏汇总", count: 52 }],
+        byTag: [{ tag: "影视资源", count: 18 }],
+        collections: [{ id: "fav", name: "收藏夹", count: 40 }],
+        views: [],
+      }
+    }
+    try {
+      return await fetchJSON("/api/kb/stats")
+    } catch (err) {
+      throw toError(err, "读取知识库统计失败")
+    }
+  },
+
+  /**
+   * 批量操作
+   * POST /api/kb/batch  body: {ids, op:"tag"|"untag"|"move"|"remove"|"stage", value}
+   * → {updated, removed, total}
+   */
+  async kbBatch({ ids = [], op, value = "" } = {}) {
+    if (!Array.isArray(ids) || !ids.length) throw new Error("请先选择素材")
+    if (!op) throw new Error("缺少操作类型")
+    if (USE_MOCK) {
+      await delay(200)
+      return { updated: ids.length, removed: op === "remove" ? ids.length : 0, total: ids.length }
+    }
+    try {
+      return await fetchJSON("/api/kb/batch", {
+        method: "POST",
+        body: JSON.stringify({ ids, op, value }),
+      })
+    } catch (err) {
+      throw toError(err, "批量操作失败")
+    }
+  },
+
+  /**
+   * 集合列表
+   * GET /api/kb/collections → [{id,name,count?}]
+   */
+  async kbCollections() {
+    if (USE_MOCK) return [{ id: "fav", name: "收藏夹", count: 40 }]
+    try {
+      const res = await fetchJSON("/api/kb/collections")
+      const list = Array.isArray(res) ? res : (res?.items || res?.collections || [])
+      return list.map((c) => ({
+        id: String(c.id ?? c.name ?? ""),
+        name: c.name || String(c.id ?? ""),
+        count: Number(c.count) || 0,
+      }))
+    } catch (err) {
+      throw toError(err, "读取集合失败")
+    }
+  },
+
+  /**
+   * 新建集合
+   * POST /api/kb/collections  body: {name} → {id,name}
+   */
+  async kbCreateCollection(name) {
+    const value = String(name || "").trim()
+    if (!value) throw new Error("请填写集合名称")
+    if (USE_MOCK) return { id: value, name: value }
+    try {
+      return await fetchJSON("/api/kb/collections", {
+        method: "POST",
+        body: JSON.stringify({ name: value }),
+      })
+    } catch (err) {
+      throw toError(err, "新建集合失败")
+    }
+  },
+
+  /**
+   * 已保存视图
+   * GET /api/kb/views → [{id,name,filter}]
+   */
+  async kbViews() {
+    if (USE_MOCK) return []
+    try {
+      const res = await fetchJSON("/api/kb/views")
+      const list = Array.isArray(res) ? res : (res?.items || res?.views || [])
+      return list.map((v) => ({
+        id: String(v.id ?? v.name ?? ""),
+        name: v.name || "未命名视图",
+        filter: v.filter && typeof v.filter === "object" ? v.filter : {},
+      }))
+    } catch (err) {
+      throw toError(err, "读取已保存视图失败")
+    }
+  },
+
+  /**
+   * 保存当前筛选为视图
+   * POST /api/kb/views  body: {name, filter} → {id,name}
+   */
+  async kbCreateView({ name, filter } = {}) {
+    const value = String(name || "").trim()
+    if (!value) throw new Error("请填写视图名称")
+    if (USE_MOCK) return { id: value, name: value, filter: filter || {} }
+    try {
+      return await fetchJSON("/api/kb/views", {
+        method: "POST",
+        body: JSON.stringify({ name: value, filter: filter || {} }),
+      })
+    } catch (err) {
+      throw toError(err, "保存视图失败")
+    }
+  },
+
+  /**
+   * 站内搜索（标题/正文/标签）
+   * GET /api/kb/search?q=&limit= → {items:[{id,title,account,publish_date,tags,score,snippet}], total, mode}
+   */
+  async kbSearch({ q = "", limit = 20 } = {}) {
+    const keyword = String(q || "").trim()
+    if (!keyword) return { items: [], total: 0, mode: "empty" }
+    if (USE_MOCK) {
+      await delay(200)
+      return { items: [], total: 0, mode: "mock" }
+    }
+    try {
+      const qs = new URLSearchParams({ q: keyword, limit: String(limit) })
+      return await fetchJSON(`/api/kb/search?${qs.toString()}`)
+    } catch (err) {
+      throw toError(err, "搜索素材失败")
     }
   },
 }
