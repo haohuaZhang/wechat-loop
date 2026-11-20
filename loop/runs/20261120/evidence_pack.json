@@ -1,0 +1,55 @@
+{
+  "query": "人工智能在医疗领域的应用：从辅助诊断到全流程安全",
+  "generated_at": "2026-11-20T04:00:12Z",
+  "total_candidates": 6,
+  "top_chunks": [
+    {
+      "article_id": "3433d20979c1",
+      "score": 1.0,
+      "snippet": "在传统模式下，影像医生进行成像、构图与判读，即使是经验丰富的医生也需要约40分钟。但引入数坤AI辅助诊断智能体平台后，从扫描结束到出具诊断报告，仅耗时10—15分钟，为患者抢回了约半小时的“黄金救治时间”。 / 目前，南皮县AI驱动的智能审方系统已累计审核处方87万条，对超量开药等不合理用药行为实现了实时拦截，将基层处方合格率提升至96%以上。",
+      "url": "http://paper.people.com.cn/rmrb/pc/content/202605/29/content_30159812.html",
+      "title": "临床一线有了“超级大脑”（健康焦点）",
+      "account": "人民日报"
+    },
+    {
+      "article_id": "2d7b8cb497ef",
+      "score": 0.95,
+      "snippet": "单张切片诊断时间从数分钟降至秒级，模型训练所需数据量减少到10%以下。 / 有无肿瘤的判断准确率从最初的95%提升到接近100%，组织学类型诊断准确率也跃升至90%以上。",
+      "url": "http://www.news.cn/tech/20260616/b6eaf975fca74027a78c2e837780b1f7/c.html",
+      "title": "从“跨省寻病理”到“县域可诊断”：医疗AI下沉基层破解看病难",
+      "account": "新华网"
+    },
+    {
+      "article_id": "e88f25a4e237",
+      "score": 0.9,
+      "snippet": "AI有时会把肺血管断面误判为结节，将良性钙化当作病变。 / 2026年4月，国家医保局将部分AI辅助诊断纳入乙类目录，这被视为积极信号。",
+      "url": "https://www.news.cn/health/20260616/b21ee1ef64f5405994e112fec597e347/c.html",
+      "title": "AI诊疗（下）：AI看病，还有几道坎要过？",
+      "account": "新华网"
+    },
+    {
+      "article_id": "979c818e9e6b",
+      "score": 0.85,
+      "snippet": "甲状腺超声AI系统实现甲状腺结节良恶性鉴别准确率超96%，侧颈淋巴结转移预测模型性能较人工读图提升约33%，帮助医生高效完成风险分层。 / 原本需要2至3小时的术前方案工作，被压缩至30分钟完成，70例临床验证解剖识别相似度达88%、血管识别召回率95%。",
+      "url": "https://shmc.fudan.edu.cn/2026/0806/c2034a150042/page.htm",
+      "title": "以AI为翼，走好医学自主创新之路",
+      "account": "复旦大学上海医学院"
+    },
+    {
+      "article_id": "9e91b8b1f4b8",
+      "score": 0.8,
+      "snippet": "医疗行业智能化发展需同时守住两条相互交织的安全底线：一是医疗数据安全底线，保障数据本身真实、完整、可控；二是医学人工智能安全底线，保障模型行为可信、可控、可问责。 / 2026年3月，美国一家医学院的研究结果显示，AI生成的伪造X线片足以以假乱真。在未提前告知的情况下，仅41%的放射科医生可主动识别伪造影像，经提示后平均识别准确率仅为75%。",
+      "url": "https://jkb.com.cn/szjk/2026/1020/514665.html",
+      "title": "发展AI医疗 底线是安全",
+      "account": "健康报"
+    },
+    {
+      "article_id": "fdbd911d0528",
+      "score": 0.75,
+      "snippet": "The typical time from starting a scan to receiving a clinical decision was less than 30 minutes, with 80% of patients safely discharged following their first scan.",
+      "url": "https://www.chelwest.nhs.uk/about-us/news/ai-powered-ultrasound-helps-most-suspected-blood-clot-patients-receive-a-clinical-decision-within-30-minutes-at-chelsea-and-westminster-hospital",
+      "title": "AI-assisted ultrasound helps most suspected blood clot patients receive a clinical decision within 30 minutes",
+      "account": "Chelsea and Westminster Hospital NHS"
+    }
+  ]
+}

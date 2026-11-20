@@ -71,6 +71,32 @@ def _find_font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
+def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font, max_w: int) -> list[str]:
+    """按像素宽度换行（中文无空格，逐字累加），避免长标题被画布裁掉。"""
+    lines: list[str] = []
+    cur = ""
+    for ch in text:
+        if ch == "\n":
+            lines.append(cur)
+            cur = ""
+            continue
+        trial = cur + ch
+        if cur and draw.textlength(trial, font=font) > max_w:
+            lines.append(cur)
+            cur = ch
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    # 禁则处理：行首不出现收尾标点，挂回上一行
+    closing = "，。、；：？！）》」』”’%…"
+    for i in range(1, len(lines)):
+        while lines[i] and lines[i][0] in closing:
+            lines[i - 1] += lines[i][0]
+            lines[i] = lines[i][1:]
+    return [ln for ln in lines if ln]
+
+
 def make_cover(
     title: str,
     subtitle: str = "",
@@ -91,34 +117,41 @@ def make_cover(
         draw.rectangle([0, 0, w, 8], fill=colors["accent"])
         draw.rectangle([w - 120, h - 60, w - 20, h - 20], fill=colors["accent"])
 
-    # 标题
-    font_title = _find_font(min(72, h // 5))
-    font_sub = _find_font(min(40, h // 9))
-    font_footer = _find_font(max(16, h // 20))
-
-    # 标题换行（每 12 字一行，公众号封面标题最佳长度）
-    lines = []
-    cur = ""
-    for ch in title:
-        cur += ch
-        if len(cur) >= 12:
-            lines.append(cur)
-            cur = ""
-    if cur:
-        lines.append(cur)
-
-    line_h = font_title.size + 12
-    total_h = len(lines) * line_h
-    y = (h - total_h) // 2 - (30 if subtitle else 0)
+    # 标题：按像素宽度换行，并逐级缩字号直到整块放得下
     x_pad = 60
+    max_w = w - 2 * x_pad
+    font_sub = _find_font(min(40, h // 9))
+    title_size = min(72, h // 5)
+    lines: list[str] = []
+    sub_lines: list[str] = []
+    block_h = 0
+    line_h = title_size + 12
+    while True:
+        font_title = _find_font(title_size)
+        lines = _wrap_text(draw, title, font_title, max_w)
+        if subtitle:
+            wrapped = _wrap_text(draw, subtitle, font_sub, max_w)
+            sub_lines = wrapped[:2]
+            if len(wrapped) > 2:
+                sub_lines[-1] = sub_lines[-1][:-1] + "…"
+        else:
+            sub_lines = []
+        line_h = title_size + 12
+        gap = 12 if sub_lines else 0
+        block_h = len(lines) * line_h + gap + len(sub_lines) * (font_sub.size + 8)
+        if block_h <= h - 48 or title_size <= 36:
+            break
+        title_size -= 4
+
+    y = max(24, (h - block_h) // 2)
     for line in lines:
         draw.text((x_pad, y), line, font=font_title, fill=colors["text"])
         y += line_h
-
-    # 副标题（可选）
-    if subtitle:
-        sub_y = y + 20
-        draw.text((x_pad, sub_y), subtitle, font=font_sub, fill=colors["subtitle"])
+    if sub_lines:
+        y += 12
+        for line in sub_lines:
+            draw.text((x_pad, y), line, font=font_sub, fill=colors["subtitle"])
+            y += font_sub.size + 8
 
     # 右下角水印位（不写文字，留装饰色块就行）
     # 文件名 = 标题前 10 字 + .png
