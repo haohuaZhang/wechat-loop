@@ -1,0 +1,1013 @@
+{
+  "version": 1,
+  "name": "真实语料测试库（IT之家 50 篇）",
+  "accounts": {
+    "IT之家": {
+      "name": "IT之家",
+      "biz": "",
+      "last_collected": "2026-11-20T02:50:51Z"
+    }
+  },
+  "articles": {
+    "7edc6e8f58fd": {
+      "source_account": "IT之家",
+      "title": "小米智能门锁 5 人脸版发布：升级 3D 人脸 + 掌静脉 + 视频通话，国补价 1799 元",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/807.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_小米智能门锁-5-人脸版发布-升级-3D-人脸-掌静脉-视频通话-国补价-1799-元.md",
+      "word_count": 1206,
+      "topics": [],
+      "keywords": [
+        "拥有",
+        "在可视猫眼方面",
+        "人脸版发布：升级",
+        "11",
+        "利用近红外光扫描手掌",
+        "2116"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "98e4fc5a713f": {
+      "source_account": "IT之家",
+      "title": "兰博基尼敞篷超跑 Temerario Spyder 登场：首次搭载可伸缩硬顶，零百加速 2.7 秒",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/806.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_兰博基尼敞篷超跑-Temerario-Spyder-登场-首次搭载可伸缩硬顶-零百加速-2-7-秒.md",
+      "word_count": 516,
+      "topics": [],
+      "keywords": [
+        "新车还可选装与",
+        "800",
+        "两台位于前轴",
+        "11",
+        "11.4",
+        "@兰博基尼汽车中国"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "0dd8c441d36f": {
+      "source_account": "IT之家",
+      "title": "蔚来萤火虫「片刻流金」特别版发售：首次推出天幕拉花，13.58 万元起限量 333 台",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/804.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_蔚来萤火虫-片刻流金-特别版发售-首次推出天幕拉花-13-58-万元起限量-333-台.md",
+      "word_count": 605,
+      "topics": [],
+      "keywords": [
+        "「自然肌理」头枕压印",
+        "IT之家注意到",
+        "点亮安全带",
+        "11",
+        "13.58",
+        "售价"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "705ab3351053": {
+      "source_account": "IT之家",
+      "title": "动画电影《冰川时代 6：火山大冒险》发布正式预告，2027 年全球献映",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/803.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_动画电影-冰川时代-6-火山大冒险-发布正式预告-2027-年全球献映.md",
+      "word_count": 338,
+      "topics": [],
+      "keywords": [
+        "年全球献映",
+        "2019",
+        "11",
+        "年即将全球献映",
+        "IT之家",
+        "最会买购买电影票"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "a702f4b360ed": {
+      "source_account": "IT之家",
+      "title": "英伟达回应数据泄露疑云：正调查第三方事件，未发现自身系统受影响",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/801.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_英伟达回应数据泄露疑云-正调查第三方事件-未发现自身系统受影响.md",
+      "word_count": 404,
+      "topics": [],
+      "keywords": [
+        "11",
+        "因此尚难判断潜在影响",
+        "此次",
+        "IT之家援引博文介绍",
+        "IT之家",
+        "英伟达回应称"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "479d40f67a96": {
+      "source_account": "IT之家",
+      "title": "上汽荣威官宣家越 07 纯电版 11 月 27 日上市，全系标配 800V 碳化硅平台 + 651km 续航",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/800.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_上汽荣威官宣家越-07-纯电版-11-月-27-日上市-全系标配-800V-碳化硅平台-651km-续航.md",
+      "word_count": 796,
+      "topics": [],
+      "keywords": [
+        "IT之家注意到",
+        "80.6kWh",
+        "800V",
+        "元下订即享",
+        "430N·m",
+        "极速制冰冷暖两用冰箱"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "77d45bf600db": {
+      "source_account": "IT之家",
+      "title": "摩托罗拉 Razr Flex 宽折叠手机渲染图曝光：绿 / 米色，内 6.9 英寸 / 外 5 英寸屏幕",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/799.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_摩托罗拉-Razr-Flex-宽折叠手机渲染图曝光-绿-米色-内-6-9-英寸-外-5-英寸屏幕.md",
+      "word_count": 455,
+      "topics": [],
+      "keywords": [
+        "6.9",
+        "11",
+        "等手机竞争",
+        "外观方面",
+        "IT之家",
+        "该机内屏约为"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "bc16af5c921a": {
+      "source_account": "IT之家",
+      "title": "李书福：吉利将协同旗下大学面向全球招收本硕博学生，培养新型全球化人才，上学即上岗",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/798.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_李书福-吉利将协同旗下大学面向全球招收本硕博学生-培养新型全球化人才-上学即上岗.md",
+      "word_count": 523,
+      "topics": [],
+      "keywords": [
+        "旗下包括吉利学院",
+        "招收本硕博学生",
+        "11",
+        "芯位教育论坛上表示",
+        "录取流程",
+        "据新浪科技报道"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "63f3e9fd34ef": {
+      "source_account": "IT之家",
+      "title": "五菱缤果 Pro 新增宁德时代电芯版，将于 11 月 24 日正式上市",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/797.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_五菱缤果-Pro-新增宁德时代电芯版-将于-11-月-24-日正式上市.md",
+      "word_count": 515,
+      "topics": [],
+      "keywords": [
+        "五菱缤果",
+        "31.9kWh",
+        "3C",
+        "11",
+        "Pro",
+        "缤果"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "01de8a2f3018": {
+      "source_account": "IT之家",
+      "title": "育碧成立 Motherbrain 专注于游戏 AI，半年员工人数减少近 1100 人",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/795.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_育碧成立-Motherbrain-专注于游戏-AI-半年员工人数减少近-1100-人.md",
+      "word_count": 1294,
+      "topics": [],
+      "keywords": [
+        "背后的开发团队",
+        "公司确认",
+        "11",
+        "Team",
+        "日公布的",
+        "已正式成为独立子公司"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "6b031b77da23": {
+      "source_account": "IT之家",
+      "title": "消息称 AMD \"Zen 6\" 主流桌面处理器要到 COMPUTEX 2027 后方能面世",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/794.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_消息称-AMD-Zen-6-主流桌面处理器要到-COMPUTEX-2027-后方能面世.md",
+      "word_count": 448,
+      "topics": [],
+      "keywords": [
+        "IT之家注意到",
+        "11",
+        "如果",
+        "6\"",
+        "消息称",
+        "将在"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "08cc9016592e": {
+      "source_account": "IT之家",
+      "title": "微软推送 Win11 26x00.10075 可选更新：重构搜索体验，内存占用降低 15%~20%",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/793.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_微软推送-Win11-26x00-10075-可选更新-重构搜索体验-内存占用降低-15-20.md",
+      "word_count": 616,
+      "topics": [],
+      "keywords": [
+        "25H2",
+        "15%",
+        "系统",
+        "11",
+        "Edge",
+        "KB5132057"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "169f1239a779": {
+      "source_account": "IT之家",
+      "title": "OPPO Pad Air6 平板开售：2.8K 120Hz 柔光屏，国补后 2209.15 元起",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/792.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_OPPO-Pad-Air6-平板开售-2-8K-120Hz-柔光屏-国补后-2209-15-元起.md",
+      "word_count": 1051,
+      "topics": [],
+      "keywords": [
+        "8GB+256GB",
+        "2.8K",
+        "11",
+        "平板今日开售",
+        "3299",
+        "OPPO"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "d4995e11a81c": {
+      "source_account": "IT之家",
+      "title": "爆料者 Cyberleek 公布疑似《GTA 6》Xbox 版文件，一周内有望实现 PC 模拟运行",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/791.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_爆料者-Cyberleek-公布疑似-GTA-6-Xbox-版文件-一周内有望实现-PC-模拟运行.md",
+      "word_count": 740,
+      "topics": [],
+      "keywords": [
+        "爆料者",
+        "网络进行分发",
+        "还声称",
+        "11",
+        "此次将门槛下调了一半",
+        "万美元"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "ff5f727f3909": {
+      "source_account": "IT之家",
+      "title": "大众海外发布电动露营车 ID. Buzz Beach，配备 2m × 1.2m 折叠床垫",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/790.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_大众海外发布电动露营车-ID-Buzz-Beach-配备-2m-1-2m-折叠床垫.md",
+      "word_count": 340,
+      "topics": [],
+      "keywords": [
+        "配备",
+        "Buzz",
+        "11",
+        "53,955",
+        "电力输出",
+        "英镑"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "adb283ab5b3a": {
+      "source_account": "IT之家",
+      "title": "6 位 PIN 码破解从 19 年缩至 20 天：部分微软 Win11 设备 TPM 防暴力破解机制被绕过",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/789.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_6-位-PIN-码破解从-19-年缩至-20-天-部分微软-Win11-设备-TPM-防暴力破解机制被绕过.md",
+      "word_count": 1105,
+      "topics": [],
+      "keywords": [
+        "的惠普",
+        "系统的锁屏",
+        "PIN",
+        "11",
+        "能绕过",
+        "防止旧状态被恢复"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "eaf77cdb8a45": {
+      "source_account": "IT之家",
+      "title": "消息称 vivo S70 系列、iQOO 16R 手机春节前发布，主打 64Mp 旗舰级长焦、中屏轻旗舰",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/787.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_消息称-vivo-S70-系列-iQOO-16R-手机春节前发布-主打-64Mp-旗舰级长焦-中屏轻旗舰.md",
+      "word_count": 587,
+      "topics": [],
+      "keywords": [
+        "月发布的",
+        "手机于今年",
+        "11",
+        "三星珠峰屏",
+        "配备",
+        "消息称"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "fd3eb596e640": {
+      "source_account": "IT之家",
+      "title": "美光：2027 年存储芯片已有 75% 库存售罄，供需形势会比今年更加紧张",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/786.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_美光-2027-年存储芯片已有-75-库存售罄-供需形势会比今年更加紧张.md",
+      "word_count": 639,
+      "topics": [],
+      "keywords": [
+        "但美光预计",
+        "有望在",
+        "11",
+        "另据",
+        "峰会记录稿",
+        "年的承诺进行磋商"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "a6a5b6d86a46": {
+      "source_account": "IT之家",
+      "title": "行业首次：小鹏 2026 科技日将首发「图灵 AI 共驾」，把智能辅助驾驶能力赋能人驾",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/785.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_行业首次-小鹏-2026-科技日将首发-图灵-AI-共驾-把智能辅助驾驶能力赋能人驾.md",
+      "word_count": 1112,
+      "topics": [],
+      "keywords": [
+        "VLA",
+        "11",
+        "是“图灵",
+        "降低晕车概率",
+        "据小鹏介绍",
+        "与小鹏"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "e13d8b622980": {
+      "source_account": "IT之家",
+      "title": "OpenAI 邀部分 Plus 用户体验 dots AI 智能体，移动版 ChatGPT 将为其设独立标签页",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/784.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_OpenAI-邀部分-Plus-用户体验-dots-AI-智能体-移动版-ChatGPT-将为其设独立标签页.md",
+      "word_count": 652,
+      "topics": [],
+      "keywords": [
+        "邀部分",
+        "11",
+        "也能更直观地发现",
+        "制作成果",
+        "或具备创建",
+        "Pro"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "8fb7e51fa2cf": {
+      "source_account": "IT之家",
+      "title": "国家邮政局：1-10 月快递业务量完成 1688.2 亿件，同比增长 3.8%，10 月下滑 0.5%",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/783.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_国家邮政局-1-10-月快递业务量完成-1688-2-亿件-同比增长-3-8-10-月下滑-0-5.md",
+      "word_count": 915,
+      "topics": [],
+      "keywords": [
+        "快递业务量完成",
+        "0.9%",
+        "亿元",
+        "11",
+        "1347.1",
+        "121.7"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "77a2348e6db9": {
+      "source_account": "IT之家",
+      "title": "微软确认 Win11 26H2 已面向所有符合条件设备推送，24H2、25H2 陆续升级",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/782.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_微软确认-Win11-26H2-已面向所有符合条件设备推送-24H2-25H2-陆续升级.md",
+      "word_count": 893,
+      "topics": [],
+      "keywords": [
+        "25H2",
+        "该版本包含此前在",
+        "11",
+        "此次扩大自动推送范围",
+        "自动获取更新",
+        "集中管理的企业设备"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "4b8f90241699": {
+      "source_account": "IT之家",
+      "title": "国内推出首个智能座舱 AI 分级评价体系，共分为 C1 到 C5 五级",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/781.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_国内推出首个智能座舱-AI-分级评价体系-共分为-C1-到-C5-五级.md",
+      "word_count": 706,
+      "topics": [],
+      "keywords": [
+        "中汽中心的调查显示",
+        "亿元",
+        "11",
+        "并与智慧出行",
+        "日前",
+        "执行"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "1a87d2ae4a0a": {
+      "source_account": "IT之家",
+      "title": "苹果关闭全球最大粉丝社区，Apple 支持社区结束 28 年运营今日永久关闭",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/779.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_苹果关闭全球最大粉丝社区-Apple-支持社区结束-28-年运营今日永久关闭.md",
+      "word_count": 565,
+      "topics": [],
+      "keywords": [
+        "等名称变化；2011",
+        "11",
+        "互相帮助的平台",
+        "Exchange",
+        "鼓励用户长期分享经验",
+        "支持社区结束"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "aafc3f0c6ca1": {
+      "source_account": "IT之家",
+      "title": "特斯拉副总裁陶琳：马斯克 24 小时中国行专门从深圳飞到上海，对上海超级工厂赞赏有加",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/778.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_特斯拉副总裁陶琳-马斯克-24-小时中国行专门从深圳飞到上海-对上海超级工厂赞赏有加.md",
+      "word_count": 826,
+      "topics": [],
+      "keywords": [
+        "IT之家注意到",
+        "马斯克表示",
+        "11",
+        "APEC",
+        "她表示",
+        "谈到如何规划人生"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "c7596a1e4d42": {
+      "source_account": "IT之家",
+      "title": "全国首个独立运行的兆瓦级海岛微电网投运",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/777.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_全国首个独立运行的兆瓦级海岛微电网投运.md",
+      "word_count": 410,
+      "topics": [],
+      "keywords": [
+        "11",
+        "1.5",
+        "120",
+        "由于海底地形复杂",
+        "工程投运后",
+        "不见太阳的极端天气"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "bd57fa2ec4e8": {
+      "source_account": "IT之家",
+      "title": "OpenAI 开放 GPT-Live-1.1 API：支持实时双向对话，智能体可边聊天边处理复杂任务",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/776.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_OpenAI-开放-GPT-Live-1-1-API-支持实时双向对话-智能体可边聊天边处理复杂任务.md",
+      "word_count": 802,
+      "topics": [],
+      "keywords": [
+        "11",
+        "此外",
+        "此次",
+        "开发者既可以使用",
+        "的升级版本",
+        "能够更可靠地处理字母"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "02bcb4a093cb": {
+      "source_account": "IT之家",
+      "title": "蔚来乐道 L70 伪装车高清谍照疑曝光，乐道 SUV 家族再上新",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/775.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_蔚来乐道-L70-伪装车高清谍照疑曝光-乐道-SUV-家族再上新.md",
+      "word_count": 656,
+      "topics": [],
+      "keywords": [
+        "IT之家注意到",
+        "19.28",
+        "新乐道",
+        "毫无疑问",
+        "万-16.58",
+        "11"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "57ab6a872755": {
+      "source_account": "IT之家",
+      "title": "蓝箭航天朱雀三号“二手回收”火箭发动机完成试车，具备再次使用条件",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/774.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_蓝箭航天朱雀三号-二手回收-火箭发动机完成试车-具备再次使用条件.md",
+      "word_count": 727,
+      "topics": [],
+      "keywords": [
+        "据IT之家此前报道",
+        "11",
+        "但经历过飞行中的高温",
+        "今年",
+        "具备再次使用的条件",
+        "19"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "5375145f8478": {
+      "source_account": "IT之家",
+      "title": "最高 6% 返现：苹果启动 Apple Card 拉新活动，首年最多可拿 1000 美元",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/772.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_最高-6-返现-苹果启动-Apple-Card-拉新活动-首年最多可拿-1000-美元.md",
+      "word_count": 861,
+      "topics": [],
+      "keywords": [
+        "凡在",
+        "：使用",
+        "11",
+        "4%",
+        "Pay）",
+        "6%"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "3134592c1ee6": {
+      "source_account": "IT之家",
+      "title": "曝 Meta 全新 AI 硬件 Muse Charm 售 300 美元，附赠一年 5G 流量",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/771.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_曝-Meta-全新-AI-硬件-Muse-Charm-售-300-美元-附赠一年-5G-流量.md",
+      "word_count": 894,
+      "topics": [],
+      "keywords": [
+        "个月的",
+        "硬件",
+        "扎克伯格当时表示",
+        "11",
+        "设备",
+        "300"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "4153fd4d1ba7": {
+      "source_account": "IT之家",
+      "title": "三星电子任命存储与移动业务新负责人，联席 CEO 全永铉、卢泰文留任",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/769.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_三星电子任命存储与移动业务新负责人-联席-CEO-全永铉-卢泰文留任.md",
+      "word_count": 496,
+      "topics": [],
+      "keywords": [
+        "两位联席",
+        "11",
+        "IT之家",
+        "全永铉",
+        "在联席",
+        "管理架构保持不变"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "0910edf469a2": {
+      "source_account": "IT之家",
+      "title": "苹果 watchOS 27.3 Beta 扩充 Siri Modular 表盘，样式总数达 5 款",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/768.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_苹果-watchOS-27-3-Beta-扩充-Siri-Modular-表盘-样式总数达-5-款.md",
+      "word_count": 745,
+      "topics": [],
+      "keywords": [
+        "表盘带来以下",
+        "：时钟更小",
+        "11",
+        "苹果为",
+        "并同样提供",
+        "Apple"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "27bd4426af4d": {
+      "source_account": "IT之家",
+      "title": "大逃杀电影《饥饿游戏：收获日出》今日内地上映，片长 158 分钟",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/767.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_大逃杀电影-饥饿游戏-收获日出-今日内地上映-片长-158-分钟.md",
+      "word_count": 394,
+      "topics": [],
+      "keywords": [
+        "IT之家注意到",
+        "11",
+        "片长",
+        "IT之家",
+        "将围绕着",
+        "40"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "c41716e16e26": {
+      "source_account": "IT之家",
+      "title": "只改一处代码，谷歌 AI 智能体优化 Harness 后任务成功率提升 8 倍",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/766.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_只改一处代码-谷歌-AI-智能体优化-Harness-后任务成功率提升-8-倍.md",
+      "word_count": 1469,
+      "topics": [],
+      "keywords": [
+        "11",
+        "SWE-bench",
+        "IT之家",
+        "That",
+        "17",
+        "谷歌研究人员当地时间"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "498e950e6aa1": {
+      "source_account": "IT之家",
+      "title": "尽管遭强烈反对：谷歌仍将在 2027 年 1 月全球推广 Android 开发者验证计划，覆盖 Google Play、三星、荣耀、OPPO、vivo、小米、传音",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/765.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_尽管遭强烈反对-谷歌仍将在-2027-年-1-月全球推广-Android-开发者验证计划-覆盖-Google-Play-.md",
+      "word_count": 1385,
+      "topics": [],
+      "keywords": [
+        "11",
+        "OPPO",
+        "设备上分发应用",
+        "根据谷歌",
+        "小米",
+        "尤其是第三方"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "249b2e931037": {
+      "source_account": "IT之家",
+      "title": "摩根大通：计划购买苹果 iPhone 18 Pro/iPhone Duo 等的受访群体中，97% 年底前购买",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/764.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_摩根大通-计划购买苹果-iPhone-18-Pro-iPhone-Duo-等的受访群体中-97-年底前购买.md",
+      "word_count": 909,
+      "topics": [],
+      "keywords": [
+        "年底前购买",
+        "摩根大通（",
+        "11",
+        "其中在计划购买新款",
+        "的中国受访群体中",
+        "年和"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "05d024128b96": {
+      "source_account": "IT之家",
+      "title": "铁路 12306 App 信息通知服务今日起优化：新增候补兑现情况和列车运行调整等",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/763.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_铁路-12306-App-信息通知服务今日起优化-新增候补兑现情况和列车运行调整等.md",
+      "word_count": 878,
+      "topics": [],
+      "keywords": [
+        "候补",
+        "通知消息",
+        "11",
+        "停运",
+        "据国铁集团官方",
+        "IT之家"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "4cf510059e93": {
+      "source_account": "IT之家",
+      "title": "商务部：1-10 月重点平台智能眼镜销售额增长 1 倍，具身智能机器人销售额增长 25.2%",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/762.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_商务部-1-10-月重点平台智能眼镜销售额增长-1-倍-具身智能机器人销售额增长-25-2.md",
+      "word_count": 641,
+      "topics": [],
+      "keywords": [
+        "平板）零售额分别增长",
+        "服务零售额增长",
+        "11",
+        "44.4%",
+        "1-10",
+        "月我国消费市场情况"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "db5771dd34b6": {
+      "source_account": "IT之家",
+      "title": "绿联首款 60W AVS 屏显充电器发售：可智能识别苹果 iPhone 18 Pro Max、iPhone Duo 等机型",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/761.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_绿联首款-60W-AVS-屏显充电器发售-可智能识别苹果-iPhone-18-Pro-Max-iPhone-Duo-等机.md",
+      "word_count": 823,
+      "topics": [],
+      "keywords": [
+        "/16/15",
+        "可智能识别",
+        "测试）；同时",
+        "11",
+        "系列及",
+        "快充"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "0455fd0898f7": {
+      "source_account": "IT之家",
+      "title": "在 Apple TV 看女车手飙车：苹果将直播 F1 Academy，上海站明年 4 月开启",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/760.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_在-Apple-TV-看女车手飙车-苹果将直播-F1-Academy-上海站明年-4-月开启.md",
+      "word_count": 673,
+      "topics": [],
+      "keywords": [
+        "赛季将于",
+        "11",
+        "TV",
+        "F3",
+        "提升体能与技术",
+        "英国银石"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "754bb68ef12a": {
+      "source_account": "IT之家",
+      "title": "OPPO Watch 5 轻薄小方表开售：机身厚 9.2mm、重 25g，国补后 764.15 元起",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/759.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_OPPO-Watch-5-轻薄小方表开售-机身厚-9-2mm-重-25g-国补后-764-15-元起.md",
+      "word_count": 811,
+      "topics": [],
+      "keywords": [
+        "元起（国补后",
+        "11",
+        "OPPO",
+        "轻薄小方表今日",
+        "项睡眠监测",
+        "采用超轻薄设计"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "94520760092a": {
+      "source_account": "IT之家",
+      "title": "Visa、万事达卡接连通报网络攻击事件：部分用户数据泄露，支付网络未受影响",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/758.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_Visa-万事达卡接连通报网络攻击事件-部分用户数据泄露-支付网络未受影响.md",
+      "word_count": 974,
+      "topics": [],
+      "keywords": [
+        "根据目前的调查结果",
+        "此前",
+        "公司业务运转正常",
+        "11",
+        "在适当情况下",
+        "Visa"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "95b47c54a33f": {
+      "source_account": "IT之家",
+      "title": "摩根大通陷入数据泄露风波：黑客宣称已掌握 1.6 万个客户邮箱",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/757.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_摩根大通陷入数据泄露风波-黑客宣称已掌握-1-6-万个客户邮箱.md",
+      "word_count": 519,
+      "topics": [],
+      "keywords": [
+        "11",
+        "摩根大通发言人称",
+        "Visa",
+        "万个客户电子邮箱",
+        "其中包括超过",
+        "124"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "91111cacfb7f": {
+      "source_account": "IT之家",
+      "title": "吉利星越 L PLUS 预计 12 月上市，搭 2.0T 混动、Flyme Auto 座舱，预售 15.77 万元起",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/756.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_吉利星越-L-PLUS-预计-12-月上市-搭-2-0T-混动-Flyme-Auto-座舱-预售-15-77-万元起.md",
+      "word_count": 903,
+      "topics": [],
+      "keywords": [
+        "款车型",
+        "预售",
+        "11",
+        "整车",
+        "Orin-Y",
+        "轴距增至"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "fa8a66a6b281": {
+      "source_account": "IT之家",
+      "title": "IT早报 1120：Anthropic 完成 813 亿美元史上最大规模 IPO；苹果 App Store 惊现安卓虚拟机应用；比亚迪发布方向盘可折叠的方程豹钛 9...",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/755.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_IT早报-1120-Anthropic-完成-813-亿美元史上最大规模-IPO-苹果-App-Store-惊现安卓虚拟.md",
+      "word_count": 3429,
+      "topics": [],
+      "keywords": [
+        "系统",
+        "上运行",
+        "这是一款",
+        "LineageOS",
+        "IPO",
+        "11"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "27d21b110a76": {
+      "source_account": "IT之家",
+      "title": "苹果 macOS 27.3 Beta 2 公测版发布：扩展 Siri AI 能力，强化完全磁盘访问权限管理",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/754.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_苹果-macOS-27-3-Beta-2-公测版发布-扩展-Siri-AI-能力-强化完全磁盘访问权限管理.md",
+      "word_count": 1132,
+      "topics": [],
+      "keywords": [
+        "文件的渲染支持",
+        "11",
+        "9to5Mac",
+        "此外",
+        "以及针对通过",
+        "Apple"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "85ac5f574cb6": {
+      "source_account": "IT之家",
+      "title": "消息称苹果 iPhone 摄影关键人物麦考马克上月退休，曾主导 8 年影像研发",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/753.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_消息称苹果-iPhone-摄影关键人物麦考马克上月退休-曾主导-8-年影像研发.md",
+      "word_count": 487,
+      "topics": [],
+      "keywords": [
+        "报道称苹果",
+        "11",
+        "麦考马克（Jon",
+        "年影像研发",
+        "IT之家援引博文介绍",
+        "10"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:50Z"
+    },
+    "bf9841584a13": {
+      "source_account": "IT之家",
+      "title": "OPPO Reno17 系列手机开售：全焦段 4K 超清长实况，3599 元起（国补后 3099 元起）",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/752.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_OPPO-Reno17-系列手机开售-全焦段-4K-超清长实况-3599-元起-国补后-3099-元起.md",
+      "word_count": 1304,
+      "topics": [],
+      "keywords": [
+        "元起（国补后",
+        "256GB",
+        "11",
+        "存储空间：419",
+        "4K",
+        "3299"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:51Z"
+    },
+    "54f0756adfce": {
+      "source_account": "IT之家",
+      "title": "微软携手英伟达升级云 PC 体验：两路 4K 60 帧画面，2027 年预览上线",
+      "publish_date": "2026-11-20",
+      "url": "https://www.ithome.com/1/029/747.htm",
+      "local_md_path": "loop/kb/IT之家/2026-11-20_微软携手英伟达升级云-PC-体验-两路-4K-60-帧画面-2027-年预览上线.md",
+      "word_count": 1065,
+      "topics": [],
+      "keywords": [
+        "11",
+        "4K",
+        "本月召开的",
+        "RTX",
+        "助手",
+        "活动中"
+      ],
+      "crossRefs": [],
+      "used_as_source": false,
+      "created_at": "2026-11-20T02:50:51Z"
+    }
+  }
+}
