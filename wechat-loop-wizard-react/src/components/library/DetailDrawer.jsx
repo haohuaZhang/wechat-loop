@@ -10,13 +10,34 @@ import {
 
 export function DetailDrawer({
   detail, loading, error, onClose, onStatus, onAddTag, onRemoveTag,
-  onCite, onCopyLink, onOpenRelated, busy,
+  onCite, onCopyLink, onOpenRelated, onExcerpt, busy,
 }) {
   const [tagInput, setTagInput] = React.useState("")
+  const [sel, setSel] = React.useState(null)
+  const contentRef = React.useRef(null)
 
   React.useEffect(() => {
     setTagInput("")
+    setSel(null)
   }, [detail?.id])
+
+  const handleSelect = () => {
+    const selection = window.getSelection()
+    const text = String(selection?.toString() || "").trim()
+    if (!text || text.length < 4 || !contentRef.current) {
+      setSel(null)
+      return
+    }
+    if (!selection.rangeCount) return
+    const node = selection.getRangeAt(0).commonAncestorContainer
+    if (!contentRef.current.contains(node)) return
+    const rect = selection.getRangeAt(0).getBoundingClientRect()
+    setSel({
+      text: text.slice(0, 2000),
+      top: Math.min(rect.top + rect.height + 6, window.innerHeight - 48),
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 150)),
+    })
+  }
 
   const submitTag = () => {
     const value = tagInput.trim()
@@ -119,7 +140,19 @@ export function DetailDrawer({
               <span className="text-[#A0A09A]">{detail.content ? `${detail.content.length} 字符` : "无正文"}</span>
             </div>
             {detail.content ? (
-              <pre className="whitespace-pre-wrap break-words font-sans text-[14px] leading-[1.7] text-[#2E2E2B]">{detail.content}</pre>
+              <>
+                <pre
+                  ref={contentRef}
+                  onMouseUp={handleSelect}
+                  onKeyUp={handleSelect}
+                  className="whitespace-pre-wrap break-words font-sans text-[14px] leading-[1.7] text-[#2E2E2B] selection:bg-[#FFF1B8]"
+                >
+                  {detail.content}
+                </pre>
+                <div className="mt-2 flex items-center gap-1 text-[11px] text-[#A0A09A]">
+                  <Quote className="h-3 w-3" /> 选中正文任意一段，可加入素材篮
+                </div>
+              </>
             ) : (
               <div className="rounded-md border border-dashed border-[#DDDDD8] bg-[#FCFCFB] px-3 py-4 text-[12px] leading-6 text-[#6B6B6B]">
                 这篇文章在知识库里只有元数据（标题/日期/链接），没有正文。
@@ -225,6 +258,22 @@ export function DetailDrawer({
           </div>
         </>
       )}
+
+      {sel && (
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            onExcerpt(sel.text)
+            window.getSelection()?.removeAllRanges()
+            setSel(null)
+          }}
+          style={{ top: sel.top, left: sel.left }}
+          className="fixed z-[160] inline-flex h-8 items-center gap-1.5 rounded-md bg-[#1F1F1D] px-2.5 text-[12px] text-white shadow-[0_4px_14px_rgba(0,0,0,0.24)] hover:bg-[#33332F]"
+        >
+          <Quote className="h-3.5 w-3.5" /> 摘录 {sel.text.length} 字
+        </button>
+      )}
     </aside>
   )
 }
@@ -240,5 +289,6 @@ DetailDrawer.propTypes = {
   onCite: PropTypes.func.isRequired,
   onCopyLink: PropTypes.func.isRequired,
   onOpenRelated: PropTypes.func.isRequired,
+  onExcerpt: PropTypes.func.isRequired,
   busy: PropTypes.bool,
 }

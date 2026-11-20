@@ -3,7 +3,7 @@ import { api } from "@/api/client"
 import { cn } from "@/lib/utils"
 import {
   Search, X, Download, RefreshCw, Loader2, Plus, Database, Upload,
-  LayoutList, LayoutGrid, ChevronDown,
+  LayoutList, LayoutGrid, ChevronDown, Quote, Trash2, Pencil, FolderPlus,
 } from "lucide-react"
 import {
   TOKENS, STATUS_META, normalizeItem, normalizeDetail,
@@ -79,8 +79,18 @@ export function LibraryPage() {
   const [searchRes, setSearchRes] = React.useState(null)
   const [searchLoading, setSearchLoading] = React.useState(false)
 
-  const [filters, setFilters] = React.useState({ collection: "", account: "", status: "", tag: "" })
+  const [filters, setFilters] = React.useState({ collection: "", account: "", status: "", tag: "", quality: "" })
   const [savedId, setSavedId] = React.useState("")
+  const [searchEngine, setSearchEngine] = React.useState("hybrid")
+  const [topics, setTopics] = React.useState(null)
+  const [topicsLoading, setTopicsLoading] = React.useState(false)
+  const [duplicates, setDuplicates] = React.useState(null)
+  const [excerpts, setExcerpts] = React.useState([])
+  const [evidenceTitle, setEvidenceTitle] = React.useState("")
+  const [evidenceBusy, setEvidenceBusy] = React.useState(false)
+  const [newColName, setNewColName] = React.useState("")
+  const [newColParent, setNewColParent] = React.useState("")
+  const [colEdit, setColEdit] = React.useState(null)
   const [sort, setSort] = React.useState("date_desc")
   const [page, setPage] = React.useState(0)
   const [listVersion, setListVersion] = React.useState(0)
@@ -148,6 +158,7 @@ export function LibraryPage() {
         account: filters.account || "all",
         tag: filters.tag || "all",
         status: filters.status || "all",
+        quality: filters.quality || "",
         collection: filters.collection || "all",
         sort,
         limit: PAGE_SIZE,
@@ -161,14 +172,47 @@ export function LibraryPage() {
     } finally {
       setLoading(false)
     }
-  }, [filters.account, filters.tag, filters.status, filters.collection, sort, page, listVersion, pushToast])
+  }, [filters.account, filters.tag, filters.status, filters.quality, filters.collection, sort, page, listVersion, pushToast])
+
+  const loadExcerpts = React.useCallback(async () => {
+    try {
+      const res = await api.kbExcerpts()
+      setExcerpts(res?.items || [])
+    } catch {
+      // 摘录读取失败不阻塞主流程
+    }
+  }, [])
+
+  const loadTopics = React.useCallback(async () => {
+    setTopicsLoading(true)
+    try {
+      setTopics(await api.kbTopics({ limit: 8 }))
+    } catch (err) {
+      pushToast(err?.message || "主题聚类失败")
+    } finally {
+      setTopicsLoading(false)
+    }
+  }, [pushToast])
+
+  const loadDuplicates = React.useCallback(async () => {
+    try {
+      setDuplicates(await api.kbDuplicates({ limit: 30 }))
+    } catch {
+      setDuplicates(null)
+    }
+  }, [])
 
   React.useEffect(() => { loadKbs() }, [loadKbs])
   React.useEffect(() => { loadSide() }, [loadSide])
   React.useEffect(() => { loadList() }, [loadList])
+  React.useEffect(() => { loadExcerpts() }, [loadExcerpts])
+  React.useEffect(() => {
+    if (view === "topic") loadTopics()
+    if (view === "insight") loadDuplicates()
+  }, [view, listVersion, loadTopics, loadDuplicates])
 
-  React.useEffect(() => { setPage(0) }, [filters.collection, filters.account, filters.status, filters.tag, sort])
-  React.useEffect(() => { setChecked(new Set()) }, [searchQ, filters.collection, filters.account, filters.status, filters.tag])
+  React.useEffect(() => { setPage(0) }, [filters.collection, filters.account, filters.status, filters.tag, filters.quality, sort])
+  React.useEffect(() => { setChecked(new Set()) }, [searchQ, filters.collection, filters.account, filters.status, filters.tag, filters.quality])
 
   React.useEffect(() => {
     const t = window.setTimeout(() => setSearchQ(query.trim()), 250)
@@ -179,7 +223,7 @@ export function LibraryPage() {
     if (!searchQ) { setSearchRes(null); setSearchLoading(false); return undefined }
     let cancelled = false
     setSearchLoading(true)
-    api.kbSearch({ q: searchQ, limit: 50 })
+    api.kbSearch({ q: searchQ, limit: 50, mode: searchEngine })
       .then((res) => {
         if (cancelled) return
         setSearchRes({
@@ -195,7 +239,7 @@ export function LibraryPage() {
       })
       .finally(() => { if (!cancelled) setSearchLoading(false) })
     return () => { cancelled = true }
-  }, [searchQ, pushToast])
+  }, [searchQ, searchEngine, pushToast])
 
   React.useEffect(() => {
     if (!activeId) { setDetail(null); setDetailError(""); return undefined }
@@ -240,7 +284,7 @@ export function LibraryPage() {
   }
 
   const clearFilters = () => {
-    setFilters({ collection: "", account: "", status: "", tag: "" })
+    setFilters({ collection: "", account: "", status: "", tag: "", quality: "" })
     setSavedId("")
     clearSearch()
   }
@@ -252,6 +296,7 @@ export function LibraryPage() {
       account: f.account || "",
       status: ["unused", "cited", "drafted"].includes(f.status) ? f.status : "",
       tag: f.tag || "",
+      quality: ["thin", "no_body", "no_keywords"].includes(f.quality) ? f.quality : "",
     })
     if (f.sort) setSort(f.sort)
     if (f.q) { setQuery(f.q); setSearchQ(f.q) }
@@ -267,6 +312,7 @@ export function LibraryPage() {
       if (filters.account) filter.account = filters.account
       if (filters.status) filter.status = filters.status
       if (filters.tag) filter.tag = filters.tag
+      if (filters.quality) filter.quality = filters.quality
       filter.sort = sort
       await api.kbCreateView({ name, filter })
       await loadSide()
@@ -309,7 +355,9 @@ export function LibraryPage() {
   const reloadAfterMutation = React.useCallback(async () => {
     await Promise.allSettled([loadList({ silent: true }), loadSide()])
     setRefreshTick((t) => t + 1)
-  }, [loadList, loadSide])
+    if (view === "topic") loadTopics()
+    if (view === "insight") loadDuplicates()
+  }, [loadList, loadSide, view, loadTopics, loadDuplicates])
 
   const runBatch = React.useCallback(async ({ ids, op, value = "", silent = false }) => {
     setBusy(true)
@@ -417,6 +465,113 @@ export function LibraryPage() {
     pushToast(ok ? "已复制原文链接" : "复制失败，请手动复制")
   }
 
+  const handleExcerpt = async (text) => {
+    if (!detail) return
+    try {
+      const res = await api.kbAddExcerpt({ articleId: detail.id, text })
+      await loadExcerpts()
+      pushToast(res?.duplicate ? "这段已在素材篮里" : `已加入素材篮（${text.length} 字）`)
+    } catch (err) {
+      pushToast(err?.message || "保存摘录失败")
+    }
+  }
+
+  const removeExcerpt = async (id) => {
+    try {
+      await api.kbDeleteExcerpt(id)
+      await loadExcerpts()
+    } catch (err) {
+      pushToast(err?.message || "删除摘录失败")
+    }
+  }
+
+  const openBasket = () => {
+    setEvidenceTitle("")
+    setModal("basket")
+    loadExcerpts()
+  }
+
+  const submitEvidence = async () => {
+    const excerptIds = excerpts.map((e) => e.id)
+    const articleIds = [...checked]
+    if (!excerptIds.length && !articleIds.length) {
+      pushToast("素材篮是空的，先在正文里划线摘录或勾选文章")
+      return
+    }
+    setEvidenceBusy(true)
+    try {
+      const res = await api.kbEvidence({ title: evidenceTitle.trim(), excerptIds, articleIds })
+      setModal(null)
+      pushToast(`证据包已生成：${res.evidencePath}（${res.evidenceCount} 条）`)
+      if (res.promptPath) pushToast(`Prompt 已生成：${res.promptPath}`)
+      if (Number(res.missingUrl)) pushToast(`${res.missingUrl} 条来源没有原文链接，已在证据包里标注`)
+      await Promise.allSettled([loadExcerpts(), loadSide(), loadList({ silent: true })])
+      setRefreshTick((t) => t + 1)
+    } catch (err) {
+      pushToast(err?.message || "生成证据包失败")
+    } finally {
+      setEvidenceBusy(false)
+    }
+  }
+
+  const pickTopic = (label) => {
+    const kw = String(label || "").trim()
+    if (!kw) return
+    setFilters({ collection: "", account: "", status: "", tag: "", quality: "" })
+    setSavedId("")
+    setQuery(kw)
+    setSearchQ(kw)
+    setView("material")
+  }
+
+  const showThin = () => {
+    setView("material")
+    applyFilters({ quality: "thin" })
+  }
+
+  const openCollections = () => {
+    setColEdit(null)
+    setNewColName("")
+    setNewColParent("")
+    setModal("manageCollections")
+  }
+
+  const createCollection = async () => {
+    const name = newColName.trim()
+    if (!name) return
+    try {
+      await api.kbCreateCollection(name, newColParent)
+      setNewColName("")
+      await loadSide()
+      pushToast(`已新建集合「${name}」`)
+    } catch (err) {
+      pushToast(err?.message || "新建集合失败")
+    }
+  }
+
+  const saveCollectionRename = async () => {
+    if (!colEdit?.id || !colEdit.name.trim()) return
+    try {
+      await api.kbCollectionOp("rename", { id: colEdit.id, name: colEdit.name.trim() })
+      setColEdit(null)
+      await loadSide()
+      pushToast("集合已重命名")
+    } catch (err) {
+      pushToast(err?.message || "重命名失败")
+    }
+  }
+
+  const deleteCollection = async (c) => {
+    try {
+      await api.kbCollectionOp("delete", { id: c.id })
+      if (filters.collection === c.name) applyFilters({ collection: "" })
+      await loadSide()
+      pushToast(`已删除集合「${c.name}」`)
+    } catch (err) {
+      pushToast(err?.message || "删除集合失败")
+    }
+  }
+
   const exportSelected = () => {
     if (!checked.size) return
     const url = api.kbExportUrl("md", { ...filters, sort, ids: [...checked] })
@@ -429,6 +584,13 @@ export function LibraryPage() {
     window.open(api.kbExportUrl(format, { ...filters, sort }), "_blank")
   }
 
+  const exportIncremental = () => {
+    setExportOpen(false)
+    const since = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+    window.open(api.kbExportUrl("zip", { ...filters, sort, since }), "_blank")
+    pushToast(`已开始增量导出（${since} 起新增，ZIP）`)
+  }
+
   const switchKb = async (id) => {
     if (!id) return
     const target = kbs.find((k) => k.id === id)
@@ -438,7 +600,7 @@ export function LibraryPage() {
       await api.kbSetActive(id)
       setActiveId("")
       setChecked(new Set())
-      setFilters({ collection: "", account: "", status: "", tag: "" })
+      setFilters({ collection: "", account: "", status: "", tag: "", quality: "" })
       setSavedId("")
       setPage(0)
       setListVersion((v) => v + 1)
@@ -544,6 +706,7 @@ export function LibraryPage() {
   if (filters.account) chips.push({ key: "account", label: "账号", value: filters.account })
   if (filters.status) chips.push({ key: "status", label: "状态", value: STATUS_META[filters.status]?.label || filters.status })
   if (filters.tag) chips.push({ key: "tag", label: "标签", value: filters.tag })
+  if (filters.quality) chips.push({ key: "quality", label: "质量", value: filters.quality === "thin" ? "薄文" : filters.quality })
   if (searchQ) chips.push({ key: "query", label: "搜索", value: `「${searchQ}」` })
 
   const removeChip = (key) => {
@@ -617,7 +780,29 @@ export function LibraryPage() {
           )}
         </div>
 
+        <select
+          value={searchEngine}
+          onChange={(e) => setSearchEngine(e.target.value)}
+          title="检索模式：关键词 / 语义 / 混合（RRF）"
+          className="h-8 shrink-0 rounded-md border border-[#E7E7E4] bg-white px-1.5 text-[12px] text-[#3D3D3A] outline-none focus:border-[#4F5BD5]"
+        >
+          <option value="hybrid">混合检索</option>
+          <option value="kw">关键词</option>
+          <option value="vec">语义</option>
+        </select>
+
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          <KbButton
+            onClick={openBasket}
+            title="素材篮：划线摘录与已勾选文章"
+            aria-label={`素材篮：${excerpts.length} 条摘录`}
+          >
+            <Quote className="h-3.5 w-3.5" />
+            <span className="hidden 2xl:inline">素材篮</span>
+            <span className={cn("rounded-full px-1.5 font-mono text-[10px] tabular-nums", excerpts.length ? "bg-[#EEF0FB] text-[#4F5BD5]" : "bg-[#F1F1EE] text-[#8E8E89]")}>
+              {excerpts.length}
+            </span>
+          </KbButton>
           <KbButton onClick={openImport} disabled={importing}>
             {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
             <span className="hidden 2xl:inline">导入采集结果</span>
@@ -641,6 +826,15 @@ export function LibraryPage() {
                       <Download className="h-3 w-3 text-[#6B6B6B]" /> {label}
                     </button>
                   ))}
+                  <div className="my-1 h-px bg-[#F1F1EE]" />
+                  <button
+                    type="button"
+                    onClick={exportIncremental}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[12.5px] hover:bg-[#F5F5F3]"
+                    title="只导出最近 7 天新增（按当前筛选）"
+                  >
+                    <RefreshCw className="h-3 w-3 text-[#6B6B6B]" /> 增量（近 7 天）
+                  </button>
                 </div>
               </>
             )}
@@ -675,6 +869,7 @@ export function LibraryPage() {
           onApplyView={applyView}
           onSaveView={saveView}
           savingView={savingView}
+          onManageCollections={openCollections}
         />
 
         <main className="min-w-0 flex-1 overflow-auto px-5 pb-24 pt-4">
@@ -771,6 +966,7 @@ export function LibraryPage() {
                       account: filters.account || "all",
                       tag: filters.tag || "all",
                       status: filters.status || "all",
+                      quality: filters.quality || "",
                       collection: filters.collection || "all",
                       sort,
                       limit: PAGE_SIZE,
@@ -798,8 +994,10 @@ export function LibraryPage() {
             {view === "topic" && (
               <TopicView
                 stats={stats}
-                loading={sideLoading}
-                onPickTag={(tag) => applyFilters({ tag })}
+                topics={topics}
+                loading={sideLoading || topicsLoading}
+                onPickTopic={pickTopic}
+                onOpenArticle={setActiveId}
                 onImport={openImport}
               />
             )}
@@ -807,9 +1005,12 @@ export function LibraryPage() {
             {view === "insight" && (
               <InsightView
                 stats={stats}
+                duplicates={duplicates}
                 loading={sideLoading}
                 onPickAccount={(account) => applyFilters({ account })}
                 onPickTag={(tag) => applyFilters({ tag })}
+                onOpenArticle={setActiveId}
+                onShowThin={showThin}
               />
             )}
           </div>
@@ -827,6 +1028,7 @@ export function LibraryPage() {
             onCite={citeDetail}
             onCopyLink={copyDetailLink}
             onOpenRelated={(id) => setActiveId(id)}
+            onExcerpt={handleExcerpt}
             busy={busy}
           />
         )}
@@ -995,6 +1197,187 @@ export function LibraryPage() {
             <KbButton variant="primary" onClick={confirmImport} disabled={importing || !importPreview.toImport}>
               {importing && <Loader2 className="h-3 w-3 animate-spin" />} 确认导入 {importPreview.toImport || 0} 篇
             </KbButton>
+          </div>
+        </Overlay>
+      )}
+
+      {modal === "basket" && (
+        <Overlay onClose={() => setModal(null)} width="max-w-[580px]" label="素材篮">
+          <div className="flex items-baseline justify-between gap-3">
+            <h3 className="text-[15px] font-semibold">素材篮</h3>
+            <span className="text-[11px] text-[#8E8E89]">
+              摘录 {excerpts.length} 条{checked.size ? ` · 另附已勾选 ${checked.size} 篇` : ""}
+            </span>
+          </div>
+          <p className="mt-1 text-[12px] text-[#6B6B6B]">
+            在详情页选中正文即可摘录；组包后写入 loop/runs/&lt;日期&gt;/evidence_pack.json，并回写引用状态。
+          </p>
+
+          <div className="mt-3 max-h-[300px] space-y-1.5 overflow-auto pr-1">
+            {excerpts.map((e) => (
+              <div key={e.id} className="rounded-md border border-[#E7E7E4] bg-[#FCFCFB] px-2.5 py-2">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-0.5 flex items-center gap-1.5">
+                      <Quote className="h-3 w-3 shrink-0 text-[#8E8E89]" />
+                      <button
+                        type="button"
+                        onClick={() => setActiveId(e.articleId)}
+                        className="truncate text-[11.5px] text-[#4F5BD5] hover:underline"
+                        title={e.articleTitle}
+                      >
+                        {e.articleTitle || e.articleId}
+                      </button>
+                    </div>
+                    <div className="line-clamp-3 text-[12.5px] leading-[1.6] text-[#3D3D3A]">{e.text}</div>
+                    {e.note && <div className="mt-0.5 text-[11px] text-[#A0A09A]">备注：{e.note}</div>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeExcerpt(e.id)}
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded text-[#A0A09A] hover:bg-[#F5E9E9] hover:text-[#C53030]"
+                    aria-label="移除摘录"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!excerpts.length && (
+              <div className="rounded-md border border-dashed border-[#E7E7E4] px-3 py-6 text-center text-[12px] text-[#A0A09A]">
+                还没有摘录。打开任意素材，在正文里划一段试试。
+              </div>
+            )}
+          </div>
+
+          <label className="mt-3 block text-[12px] text-[#4A4A47]">
+            选题标题（可选，填了会同步生成 Prompt）
+            <KbInput
+              value={evidenceTitle}
+              onChange={(e) => setEvidenceTitle(e.target.value)}
+              placeholder="如：小米为什么把门锁做成视频通话入口"
+              className="mt-1"
+            />
+          </label>
+
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-[#A0A09A]">
+              {checked.size ? `已勾选 ${checked.size} 篇文章会一并进入证据包` : "未勾选文章时仅使用摘录"}
+            </span>
+            <div className="flex gap-2">
+              <KbButton onClick={() => setModal(null)} disabled={evidenceBusy}>取消</KbButton>
+              <KbButton
+                variant="primary"
+                onClick={submitEvidence}
+                disabled={evidenceBusy || (!excerpts.length && !checked.size)}
+              >
+                {evidenceBusy && <Loader2 className="h-3 w-3 animate-spin" />} 生成证据包
+              </KbButton>
+            </div>
+          </div>
+        </Overlay>
+      )}
+
+      {modal === "manageCollections" && (
+        <Overlay onClose={() => setModal(null)} width="max-w-[460px]" label="管理集合">
+          <h3 className="text-[15px] font-semibold">管理集合</h3>
+          <p className="mt-1 text-[12px] text-[#6B6B6B]">支持两级以上嵌套：新建时选择父集合即可成为子集合。</p>
+
+          <div className="mt-3 max-h-[260px] space-y-1 overflow-auto pr-1">
+            {(() => {
+              const ids = new Set(collections.map((c) => c.id))
+              const byParent = new Map()
+              for (const c of collections) {
+                const parent = c.parent && ids.has(c.parent) ? c.parent : ""
+                if (!byParent.has(parent)) byParent.set(parent, [])
+                byParent.get(parent).push(c)
+              }
+              const rows = []
+              const seen = new Set()
+              const walk = (parent, depth) => {
+                for (const c of byParent.get(parent) || []) {
+                  if (seen.has(c.id)) continue
+                  seen.add(c.id)
+                  rows.push({ c, depth })
+                  walk(c.id, depth + 1)
+                }
+              }
+              walk("", 0)
+              for (const c of collections) if (!seen.has(c.id)) rows.push({ c, depth: 0 })
+              if (!rows.length) {
+                return <div className="rounded-md border border-dashed border-[#E7E7E4] px-3 py-5 text-center text-[12px] text-[#A0A09A]">还没有集合</div>
+              }
+              return rows.map(({ c, depth }) => (
+                <div
+                  key={c.id}
+                  style={{ marginLeft: depth * 16 }}
+                  className="flex items-center gap-2 rounded-md border border-[#E7E7E4] bg-[#FCFCFB] px-2 py-1.5"
+                >
+                  {colEdit?.id === c.id ? (
+                    <>
+                      <KbInput
+                        autoFocus
+                        value={colEdit.name}
+                        onChange={(e) => setColEdit({ id: c.id, name: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveCollectionRename(); if (e.key === "Escape") setColEdit(null) }}
+                        className="h-7 flex-1 text-[12px]"
+                      />
+                      <button type="button" onClick={saveCollectionRename} className="text-[11px] text-[#4F5BD5] hover:underline">保存</button>
+                      <button type="button" onClick={() => setColEdit(null)} className="text-[11px] text-[#8E8E89] hover:underline">取消</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="min-w-0 flex-1 truncate text-[12.5px] text-[#3D3D3A]">{c.name}</span>
+                      <span className="font-mono text-[10px] tabular-nums text-[#A0A09A]">{c.count || 0}</span>
+                      <button
+                        type="button"
+                        onClick={() => setColEdit({ id: c.id, name: c.name })}
+                        className="grid h-6 w-6 place-items-center rounded text-[#8E8E89] hover:bg-[#EEF0FB] hover:text-[#4F5BD5]"
+                        aria-label={`重命名 ${c.name}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteCollection(c)}
+                        className="grid h-6 w-6 place-items-center rounded text-[#A0A09A] hover:bg-[#F5E9E9] hover:text-[#C53030]"
+                        aria-label={`删除 ${c.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))
+            })()}
+          </div>
+
+          <div className="mt-3 rounded-md border border-[#E7E7E4] bg-white p-2.5">
+            <div className="mb-1.5 text-[11px] text-[#8E8E89]">新建集合</div>
+            <div className="flex items-center gap-1.5">
+              <KbInput
+                value={newColName}
+                onChange={(e) => setNewColName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") createCollection() }}
+                placeholder="集合名称"
+                className="h-8 flex-1 text-[12px]"
+              />
+              <select
+                value={newColParent}
+                onChange={(e) => setNewColParent(e.target.value)}
+                className="h-8 max-w-[130px] rounded-md border border-[#E7E7E4] bg-white px-1.5 text-[11px] text-[#3D3D3A] outline-none"
+                aria-label="父集合"
+              >
+                <option value="">顶级集合</option>
+                {collections.map((c) => <option key={c.id} value={c.id}>放入「{c.name}」</option>)}
+              </select>
+              <KbButton onClick={createCollection} disabled={!newColName.trim()}>
+                <FolderPlus className="h-3.5 w-3.5" /> 新建
+              </KbButton>
+            </div>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <KbButton onClick={() => setModal(null)}>完成</KbButton>
           </div>
         </Overlay>
       )}

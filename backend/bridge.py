@@ -655,6 +655,7 @@ def kb_articles():
         account = _kb_arg("account", "ab").strip()
         tag = _kb_arg("tag", "tb").strip()
         status = (request.args.get("status") or "").strip()
+        quality = (request.args.get("quality") or "").strip()
         collection = _kb_arg("collection", "cb").strip()
         sort = (request.args.get("sort") or "date_desc").strip()
         try:
@@ -675,6 +676,8 @@ def kb_articles():
                       if tag in b["tags"] or tag in b["topics"] or tag in b["keywords"]]
         if status:
             briefs = [b for b in briefs if b["status"] == status]
+        if quality in ("thin", "no_body", "no_keywords"):
+            briefs = [b for b in briefs if quality in ((b.get("quality") or {}).get("flags") or [])]
         if collection == "__none__":
             briefs = [b for b in briefs if not b["collections"]]
         elif collection:
@@ -741,6 +744,15 @@ def kb_article_detail(article_id: str):
         t_tags = _term_set(target.get("tags"))
         t_kws = _term_set(target.get("keywords"))
         t_hash = target.get("hash") or _article_hash(target)
+        analyze = _kb_analyze_module()
+        from collections import Counter
+
+        target_text = " ".join([
+            str(target.get("title") or ""), " ".join(sorted(t_kws)),
+            " ".join(sorted(t_tags)), brief["content"][:2000],
+        ])
+        t_vec = Counter(analyze.tokenize(target_text))
+        t_simhash = analyze.simhash64(target_text)
 
         related: list[dict] = []
         dup: dict | None = None
@@ -749,33 +761,39 @@ def kb_article_detail(article_id: str):
                 continue
             shared_tags = _term_set(other.get("tags")) & t_tags
             shared_kws = _term_set(other.get("keywords")) & t_kws
-            if shared_tags or shared_kws:
-                parts = []
-                if shared_tags:
-                    parts.append("共同标签：" + "、".join(sorted(shared_tags)[:3]))
-                if shared_kws:
-                    parts.append("共同关键词：" + "、".join(sorted(shared_kws)[:3]))
+            o_text = " ".join([
+                str(other.get("title") or ""),
+                " ".join(sorted(_term_set(other.get("keywords")))),
+                " ".join(sorted(_term_set(other.get("tags")))),
+                _snippet(_article_content(other), 300),
+            ])
+            o_vec = Counter(analyze.tokenize(o_text))
+            cos = analyze.cosine_counter(t_vec, o_vec)
+
+            parts = []
+            if shared_tags:
+                parts.append("共同标签：" + "、".join(sorted(shared_tags)[:3]))
+            if shared_kws:
+                parts.append("共同关键词：" + "、".join(sorted(shared_kws)[:3]))
+            if cos >= 0.12:
+                parts.append(f"语义相近 {round(cos * 100)}%")
+            if parts:
                 related.append({
                     "id": other.get("id"),
                     "title": other.get("title") or "(无标题)",
                     "reason": "；".join(parts),
-                    "_score": len(shared_tags) * 2 + len(shared_kws),
+                    "_score": len(shared_tags) * 2 + len(shared_kws) + cos * 5,
                 })
 
             o_hash = other.get("hash") or _article_hash(other)
-            if t_hash and o_hash == t_hash:
-                dup = {"id": other.get("id"),
-                       "title": other.get("title") or "(无标题)",
-                       "similarity": 1.0}
-            else:
-                o_kws = _term_set(other.get("keywords"))
-                union = o_kws | t_kws
-                if union:
-                    sim = len(o_kws & t_kws) / len(union)
-                    if sim >= 0.75 and (dup is None or sim > dup.get("similarity", 0)):
-                        dup = {"id": other.get("id"),
-                               "title": other.get("title") or "(无标题)",
-                               "similarity": round(sim, 3)}
+            o_simhash = analyze.simhash64(o_text)
+            ham = analyze.hamming(t_simhash, o_simhash)
+            sim = 1.0 if (t_hash and o_hash == t_hash) else max(cos, 1.0 - ham / 64.0)
+            if (t_hash and o_hash == t_hash) or cos >= 0.82 or (ham <= 8 and cos >= 0.5):
+                if dup is None or sim > dup.get("similarity", 0):
+                    dup = {"id": other.get("id"),
+                           "title": other.get("title") or "(无标题)",
+                           "similarity": round(sim, 3)}
 
         related.sort(key=lambda r: -r["_score"])
         brief["related"] = [{k: r[k] for k in ("id", "title", "reason")} for r in related[:5]]
@@ -798,6 +816,10 @@ def kb_export():
         q = _kb_arg("q", "qb").strip().lower()
         account = _kb_arg("account", "ab").strip()
         tag = _kb_arg("tag", "tb").strip()
+        collection = _kb_arg("collection", "cb").strip()
+        status = (request.args.get("status") or "").strip()
+        since = (request.args.get("since") or "").strip()  # YYYY-MM-DD，增量导出
+        ids_arg = (request.args.get("ids") or "").strip()
 
         items = _kb_articles()
         briefs = [_kb_item_brief(x) for x in items]
@@ -808,6 +830,18 @@ def kb_export():
         if q:
             briefs = [b for b in briefs
                       if q in " ".join([b["title"], b["snippet"], " ".join(b["topics"])]).lower()]
+        if status in ("unused", "cited", "drafted"):
+            briefs = [b for b in briefs if b["status"] == status]
+        if collection == "__none__":
+            briefs = [b for b in briefs if not b["collections"]]
+        elif collection:
+            cid = _resolve_collection(_load_kb(), collection)
+            briefs = [b for b in briefs if cid in b["collections"]]
+        if since:
+            briefs = [b for b in briefs if str(b["publishDate"] or "") >= since]
+        if ids_arg:
+            wanted = {x.strip() for x in ids_arg.split(",") if x.strip()}
+            briefs = [b for b in briefs if str(b["id"]) in wanted]
         if not briefs:
             return jsonify({"error": "没有符合条件的文章可导出"}), 404
 
@@ -831,7 +865,16 @@ def kb_export():
                     safe = "".join(c for c in b["title"] if c not in '\\/:*?"<>|')[:60] or b["id"]
                     zf.writestr(f"{b['publishDate'] or 'unknown'}-{safe}.md",
                                 f"# {b['title']}\n\n> 来源：{b['account']}　{b['publishDate']}\n> 原文：{b['url']}\n\n{body}\n")
-                zf.writestr("manifest.json", json.dumps(briefs, ensure_ascii=False, indent=2))
+                manifest = {
+                    "exportedAt": _now_iso(),
+                    "since": since or None,
+                    "filters": {"q": q, "account": account, "tag": tag,
+                                "collection": collection, "status": status},
+                    "count": len(briefs),
+                    "items": [{"id": b["id"], "title": b["title"],
+                               "publishDate": b["publishDate"], "url": b["url"]} for b in briefs],
+                }
+                zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
             buf.seek(0)
             return Response(buf.read(), mimetype="application/zip",
                             headers={"Content-Disposition": f'attachment; filename="kb-{stamp}.zip"'})
@@ -868,18 +911,29 @@ def _parse_iso(value):
 
 
 def _collection_items(kb: dict) -> list[dict]:
-    """collections 既可能是 {id: name} 也可能是 {id: {name}}，统一成列表。"""
+    """collections 既可能是 {id: name} 也可能是 {id: {name,parent}}，统一成列表。"""
     cols = kb.get("collections") or {}
     out: list[dict] = []
     if isinstance(cols, dict):
         for cid, meta in cols.items():
-            name = meta.get("name") if isinstance(meta, dict) else (meta or cid)
-            out.append({"id": str(cid), "name": str(name or cid)})
+            if isinstance(meta, dict):
+                name = meta.get("name") or cid
+                parent = str(meta.get("parent") or "")
+            else:
+                name = meta or cid
+                parent = ""
+            out.append({"id": str(cid), "name": str(name or cid), "parent": parent})
     elif isinstance(cols, list):
         for c in cols:
             if isinstance(c, dict) and c.get("id"):
-                out.append({"id": str(c["id"]), "name": str(c.get("name") or c["id"])})
+                out.append({"id": str(c["id"]), "name": str(c.get("name") or c["id"]),
+                            "parent": str(c.get("parent") or "")})
     return out
+
+
+def _collection_set(cols: dict, cid: str, name: str, parent: str = "") -> None:
+    """写回集合，统一存成 {name,parent}；parent 为空时保持紧凑写法。"""
+    cols[cid] = {"name": name, "parent": parent} if parent else name
 
 
 def _resolve_collection(kb: dict, value) -> str:
@@ -928,6 +982,10 @@ def kb_stats():
         col_counts: dict[str, int] = {}
         cutoff = datetime.now(timezone.utc) - timedelta(days=7)
         week_added = 0
+        thin = 0
+        no_body = 0
+        no_keywords = 0
+        score_sum = 0
 
         for item in items:
             if not isinstance(item, dict):
@@ -936,6 +994,21 @@ def kb_stats():
             if stage not in counts:
                 stage = "cited" if item.get("used_as_source") else "unused"
             counts[stage] += 1
+
+            quality = item.get("quality")
+            if not isinstance(quality, dict):
+                quality = _quality_of(item)
+            flags = quality.get("flags") or []
+            if "thin" in flags:
+                thin += 1
+            if "no_body" in flags:
+                no_body += 1
+            if "no_keywords" in flags:
+                no_keywords += 1
+            try:
+                score_sum += int(quality.get("score") or 0)
+            except (TypeError, ValueError):
+                pass
 
             key = str(item.get("source_account") or item.get("account") or "未知")
             by_account[key] = by_account.get(key, 0) + 1
@@ -958,7 +1031,8 @@ def kb_stats():
             by_account_out.append({"key": key, "name": name or key, "count": count})
 
         collections = [
-            {"id": c["id"], "name": c["name"], "count": col_counts.get(c["id"], 0)}
+            {"id": c["id"], "name": c["name"], "parent": c.get("parent") or "",
+             "count": col_counts.get(c["id"], 0)}
             for c in _collection_items(kb)
         ]
         return jsonify({
@@ -967,6 +1041,10 @@ def kb_stats():
             "cited": counts["cited"],
             "drafted": counts["drafted"],
             "weekAdded": week_added,
+            "thin": thin,
+            "noBody": no_body,
+            "noKeywords": no_keywords,
+            "avgQuality": round(score_sum / total, 1) if total else 0,
             "citedRate": round((counts["cited"] + counts["drafted"]) / total, 4) if total else 0,
             "byAccount": by_account_out,
             "byTag": [{"tag": k, "count": v}
@@ -1074,38 +1152,98 @@ def kb_collections():
                 continue
             for c in item.get("collections") or []:
                 counts[str(c)] = counts.get(str(c), 0) + 1
-        return jsonify([
-            {"id": c["id"], "name": c["name"], "count": counts.get(c["id"], 0)}
-            for c in _collection_items(kb)
-        ])
+        out = _collection_items(kb)
+        for c in out:
+            c["count"] = counts.get(c["id"], 0)
+        return jsonify(out)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/kb/collections", methods=["POST"])
 def kb_collection_create():
+    """集合树：create / rename / move / delete（默认 create，兼容旧调用）。"""
     from flask import jsonify, request
 
     try:
         body = request.get_json(silent=True) or {}
+        action = (body.get("action") or "create").strip()
         name = (body.get("name") or "").strip()
-        if not name:
-            return jsonify({"error": "缺少 name"}), 400
         kb_path = _active_kb_path()
         kb = _load_kb(kb_path)
         cols = kb.get("collections")
         if not isinstance(cols, dict):
             cols = {}
-        base = _kb_slug(name)
-        cid = base
-        n = 2
-        while cid in cols:
-            cid = f"{base}-{n}"
-            n += 1
-        cols[cid] = name
-        kb["collections"] = cols
-        _save_kb(kb_path, kb)
-        return jsonify({"id": cid, "name": name})
+        items = _collection_items(kb)
+        by_id = {c["id"]: c for c in items}
+
+        if action == "create":
+            if not name:
+                return jsonify({"error": "缺少 name"}), 400
+            parent = _resolve_collection(kb, body.get("parent") or "")
+            if parent and parent not in by_id:
+                return jsonify({"error": f"父集合不存在：{parent}"}), 400
+            base = _kb_slug(name)
+            cid = base
+            n = 2
+            while cid in cols:
+                cid = f"{base}-{n}"
+                n += 1
+            _collection_set(cols, cid, name, parent)
+            kb["collections"] = cols
+            _save_kb(kb_path, kb)
+            return jsonify({"id": cid, "name": name, "parent": parent,
+                            "items": _collection_items(kb)})
+
+        cid = _resolve_collection(kb, body.get("id") or "")
+        if cid not in by_id:
+            return jsonify({"error": f"集合不存在：{body.get('id')}"}), 404
+
+        if action == "rename":
+            if not name:
+                return jsonify({"error": "缺少 name"}), 400
+            meta = by_id[cid]
+            _collection_set(cols, cid, name, meta.get("parent") or "")
+            kb["collections"] = cols
+            _save_kb(kb_path, kb)
+            return jsonify({"id": cid, "name": name, "items": _collection_items(kb)})
+
+        if action == "move":
+            parent = _resolve_collection(kb, body.get("parent") or "")
+            if parent and parent not in by_id:
+                return jsonify({"error": f"父集合不存在：{parent}"}), 400
+            # 防止把父节点挂到自己的子孙下面
+            cur = parent
+            seen = set()
+            while cur:
+                if cur == cid:
+                    return jsonify({"error": "不能把集合移动到它自己的子集合下"}), 400
+                if cur in seen:
+                    break
+                seen.add(cur)
+                cur = by_id.get(cur, {}).get("parent") or ""
+            meta = by_id[cid]
+            _collection_set(cols, cid, meta["name"], parent)
+            kb["collections"] = cols
+            _save_kb(kb_path, kb)
+            return jsonify({"id": cid, "parent": parent, "items": _collection_items(kb)})
+
+        if action == "delete":
+            parent = by_id[cid].get("parent") or ""
+            cols.pop(cid, None)
+            for c in _collection_items({"collections": cols}):
+                if c.get("parent") == cid:
+                    _collection_set(cols, c["id"], c["name"], parent)
+            articles = kb.get("articles")
+            if isinstance(articles, dict):
+                for item in articles.values():
+                    if isinstance(item, dict) and isinstance(item.get("collections"), list):
+                        item["collections"] = [x for x in item["collections"] if str(x) != cid]
+            kb["collections"] = cols
+            _save_kb(kb_path, kb)
+            return jsonify({"deleted": cid, "items": _collection_items(kb)})
+
+        return jsonify({"error": "action 只能是 create/rename/move/delete"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1155,6 +1293,64 @@ def _kb_index_module():
     if scripts not in sys.path:
         sys.path.insert(0, scripts)
     return importlib.import_module("kb_index")
+
+
+def _kb_analyze_module():
+    import importlib
+
+    scripts = str(LOOP_ROOT / "scripts")
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    return importlib.import_module("kb_analyze")
+
+
+def _excerpts_path(kb_path: Path | None = None) -> Path:
+    stem = Path(kb_path or _active_kb_path()).stem
+    return KB_DIR / "kb" / ".excerpts" / f"{stem}.json"
+
+
+def _load_excerpts(kb_path: Path | None = None) -> dict:
+    data = _load_json(_excerpts_path(kb_path), {"schema": 1, "items": []})
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        return {"schema": 1, "items": []}
+    return data
+
+
+def _save_excerpts(data: dict, kb_path: Path | None = None) -> None:
+    _save_json(_excerpts_path(kb_path), data)
+
+
+def _mark_articles_used(article_ids, stage: str = "cited") -> list[str]:
+    """把文章标记为已引用/已成稿（used_as_source=true）。"""
+    kb_path = _active_kb_path()
+    kb = _load_kb(kb_path)
+    articles = kb.get("articles")
+    if not isinstance(articles, dict):
+        return []
+    now = _now_iso()
+    marked = []
+    for aid in article_ids:
+        item = articles.get(str(aid))
+        if not isinstance(item, dict):
+            continue
+        item["used_as_source"] = True
+        item["stage"] = stage
+        item["used_at"] = item.get("used_at") or now
+        marked.append(str(aid))
+    if marked:
+        _save_kb(kb_path, kb)
+    return marked
+
+
+def _mark_run_evidence_used(run_dir: Path, stage: str = "drafted") -> list[str]:
+    """发布回流：把该 run 证据包里的来源文章标记为已成稿。"""
+    evidence = _load_json(run_dir / "evidence_pack.json", {})
+    chunks = evidence.get("top_chunks") if isinstance(evidence, dict) else None
+    ids = []
+    for chunk in chunks or []:
+        if isinstance(chunk, dict) and chunk.get("article_id"):
+            ids.append(str(chunk["article_id"]))
+    return _mark_articles_used(list(dict.fromkeys(ids)), stage=stage)
 
 
 def _highlight(text: str, q: str, size: int = 110) -> str:
@@ -1209,49 +1405,304 @@ def _kb_fallback_search(q: str, briefs: list[dict], limit: int,
 
 @app.route("/api/kb/search", methods=["GET"])
 def kb_search():
-    """全文检索：优先 SQLite FTS5，异常时降级为子串打分。"""
+    """检索：FTS5(BM25) / hash-ngram 向量 / 两路 RRF 融合（默认 hybrid）。"""
     from flask import jsonify, request
 
     try:
         q = _kb_arg("q", "qb").strip()
+        mode = (request.args.get("mode") or "hybrid").strip().lower()
+        if mode not in ("kw", "vec", "hybrid"):
+            return jsonify({"error": "mode 只能是 kw/vec/hybrid"}), 400
         try:
             limit = max(1, min(200, int(request.args.get("limit") or 50)))
         except ValueError:
             return jsonify({"error": "limit 必须是整数"}), 400
         if len(q) < 2:
-            return jsonify({"items": [], "total": 0, "mode": "fts"})
+            return jsonify({"items": [], "total": 0, "mode": mode})
 
         raw_items = _kb_articles()
         briefs = [_kb_item_brief(x) for x in raw_items]
         by_id = {str(b["id"]): b for b in briefs}
         content_by_id = {str(x.get("id")): _article_content(x) for x in raw_items}
 
-        engine_ok = True
-        hits: list[dict] = []
-        try:
-            hits = _kb_index_module().search(_active_kb_path(), q, limit=limit)
-        except Exception:
-            engine_ok = False
+        def _shape(h: dict, extra: dict | None = None) -> dict | None:
+            b = by_id.get(str(h.get("id")))
+            if not b:
+                return None
+            item = {
+                "id": b["id"],
+                "title": b["title"],
+                "account": b["account"],
+                "publishDate": b["publishDate"],
+                "tags": b["tags"],
+                "score": h.get("score"),
+                "snippet": h.get("snippet") or b["snippet"],
+            }
+            if extra:
+                item.update(extra)
+            return item
 
-        if engine_ok:
+        kw_hits: list[dict] = []
+        vec_hits: list[dict] = []
+        kw_ok = vec_ok = False
+        if mode in ("kw", "hybrid"):
+            try:
+                kw_hits = _kb_index_module().search(_active_kb_path(), q, limit=limit)
+                kw_ok = True
+            except Exception:
+                kw_ok = False
+        if mode in ("vec", "hybrid"):
+            try:
+                vec_hits = _kb_analyze_module().search_vec(_active_kb_path(), q, limit=limit)
+                vec_ok = True
+            except Exception:
+                vec_ok = False
+
+        if mode == "hybrid" and kw_ok and vec_ok:
+            fused = _kb_analyze_module().rrf_fuse([("fts", kw_hits), ("vec", vec_hits)])
             items = []
-            for h in hits:
-                b = by_id.get(str(h["id"]))
-                if not b:
-                    continue
-                items.append({
-                    "id": b["id"],
-                    "title": b["title"],
-                    "account": b["account"],
-                    "publishDate": b["publishDate"],
-                    "tags": b["tags"],
-                    "score": h["score"],
-                    "snippet": h["snippet"],
-                })
+            for h in fused:
+                shaped = _shape(h, {"engines": h.get("engines") or {}})
+                if shaped:
+                    items.append(shaped)
+            return jsonify({
+                "items": items[:limit], "total": len(items),
+                "mode": "hybrid",
+                "engines": {"fts": len(kw_hits), "vec": len(vec_hits), "rrfK": 60},
+            })
+
+        if mode == "vec" and vec_ok:
+            items = [x for x in (_shape(h) for h in vec_hits) if x]
+            return jsonify({"items": items, "total": len(items), "mode": "vec",
+                            "engines": {"vec": len(vec_hits)}})
+
+        if kw_ok:
+            items = [x for x in (_shape(h) for h in kw_hits) if x]
             return jsonify({"items": items, "total": len(items), "mode": "fts"})
+
+        if vec_ok:
+            items = [x for x in (_shape(h) for h in vec_hits) if x]
+            return jsonify({"items": items, "total": len(items), "mode": "vec"})
 
         items = _kb_fallback_search(q, briefs, limit, content_by_id)
         return jsonify({"items": items, "total": len(items), "mode": "fallback"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/topics", methods=["GET"])
+def kb_topics():
+    """主题聚类 + 覆盖度（词共现，无 LLM）。"""
+    from flask import jsonify, request
+
+    try:
+        limit = max(3, min(20, int(request.args.get("limit") or 8)))
+    except ValueError:
+        limit = 8
+    try:
+        return jsonify(_kb_analyze_module().build_clusters(_active_kb_path(), limit=limit))
+    except Exception as e:
+        return jsonify({"error": f"主题聚类失败：{e}"}), 500
+
+
+@app.route("/api/kb/duplicates", methods=["GET"])
+def kb_duplicates():
+    """疑似重复分组（simhash64 + 余弦双阈值）。"""
+    from flask import jsonify, request
+
+    try:
+        limit = max(1, min(100, int(request.args.get("limit") or 30)))
+    except ValueError:
+        limit = 30
+    try:
+        return jsonify(_kb_analyze_module().find_duplicates(_active_kb_path(), limit=limit))
+    except Exception as e:
+        return jsonify({"error": f"重复检测失败：{e}"}), 500
+
+
+@app.route("/api/kb/excerpts", methods=["GET", "POST"])
+def kb_excerpts():
+    """划线摘录：GET 列表 / POST 新增（同一文章同一段文本幂等）。"""
+    from flask import jsonify, request
+    import hashlib
+
+    try:
+        if request.method == "GET":
+            data = _load_excerpts()
+            raw = _kb_articles()
+            by_id = {str(x.get("id")): x for x in raw}
+            items = []
+            for e in data.get("items") or []:
+                aid = str(e.get("articleId") or "")
+                a = by_id.get(aid) or {}
+                items.append({
+                    **e,
+                    "articleTitle": a.get("title") or "",
+                    "account": a.get("source_account") or a.get("account") or "",
+                    "url": a.get("url") or "",
+                })
+            items.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+            return jsonify({"items": items, "count": len(items)})
+
+        body = request.get_json(silent=True) or {}
+        article_id = str(body.get("articleId") or "").strip()
+        text = str(body.get("text") or "").strip()
+        note = str(body.get("note") or "").strip()[:200]
+        if not article_id or not text:
+            return jsonify({"error": "缺少 articleId 或 text"}), 400
+        if len(text) > 2000:
+            text = text[:2000]
+        raw = _kb_articles()
+        article = next((x for x in raw if str(x.get("id")) == article_id), None)
+        if article is None:
+            return jsonify({"error": f"文章不存在：{article_id}"}), 404
+
+        data = _load_excerpts()
+        items = data.setdefault("items", [])
+        for e in items:
+            if str(e.get("articleId")) == article_id and e.get("text") == text:
+                return jsonify({**e, "duplicate": True})
+        item = {
+            "id": "ex-" + hashlib.md5(f"{article_id}|{text}|{time.time()}".encode()).hexdigest()[:10],
+            "articleId": article_id,
+            "text": text,
+            "note": note,
+            "created_at": _now_iso(),
+        }
+        items.append(item)
+        data["items"] = items[-500:]
+        _save_excerpts(data)
+        return jsonify({**item, "articleTitle": article.get("title") or "",
+                        "account": article.get("source_account") or "",
+                        "url": article.get("url") or ""})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/excerpts/<excerpt_id>", methods=["DELETE"])
+def kb_excerpt_delete(excerpt_id: str):
+    from flask import jsonify
+
+    try:
+        data = _load_excerpts()
+        before = len(data.get("items") or [])
+        data["items"] = [e for e in (data.get("items") or [])
+                         if str(e.get("id")) != excerpt_id]
+        if len(data["items"]) == before:
+            return jsonify({"error": f"摘录不存在：{excerpt_id}"}), 404
+        _save_excerpts(data)
+        return jsonify({"ok": True, "deleted": excerpt_id, "count": len(data["items"])})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/kb/evidence", methods=["POST"])
+def kb_evidence():
+    """素材篮 → 证据包：落 loop/runs/<date>/evidence_pack.json，并回写引用状态。"""
+    from flask import jsonify, request
+
+    try:
+        body = request.get_json(silent=True) or {}
+        title = (body.get("title") or "").strip()
+        excerpt_ids = [str(x) for x in (body.get("excerptIds") or []) if str(x).strip()]
+        article_ids = [str(x) for x in (body.get("articleIds") or []) if str(x).strip()]
+        date_tag = body.get("date") or _today()
+        if not excerpt_ids and not article_ids:
+            return jsonify({"error": "素材篮是空的，先摘录或勾选文章"}), 400
+
+        raw = _kb_articles()
+        by_id = {str(x.get("id")): x for x in raw}
+        ex_data = _load_excerpts()
+        ex_by_id = {str(e.get("id")): e for e in (ex_data.get("items") or [])}
+
+        merged: dict[str, list[str]] = {}
+        order: list[str] = []
+
+        def _push(aid: str, text: str) -> None:
+            if not aid or aid not in by_id:
+                return
+            if aid not in merged:
+                merged[aid] = []
+                order.append(aid)
+            if text:
+                merged[aid].append(text)
+
+        for eid in excerpt_ids:
+            ex = ex_by_id.get(eid)
+            if not ex:
+                continue
+            _push(str(ex.get("articleId") or ""), str(ex.get("text") or ""))
+        for aid in article_ids:
+            item = by_id.get(aid)
+            if item:
+                _push(aid, "")
+                merged[aid] = merged[aid] or []
+
+        if not order:
+            return jsonify({"error": "素材篮里的内容已不在当前知识库中"}), 400
+
+        top_chunks = []
+        missing_url = 0
+        for idx, aid in enumerate(order):
+            item = by_id[aid]
+            texts = merged.get(aid) or []
+            snippet = " / ".join(x for x in texts if x).strip()
+            if not snippet:
+                snippet = _snippet(_article_content(item), 300)
+            url = str(item.get("url") or "")
+            if not url:
+                missing_url += 1
+            top_chunks.append({
+                "article_id": aid,
+                "score": round(max(0.1, 1.0 - idx * 0.05), 3),
+                "snippet": snippet[:600],
+                "url": url,
+                "title": item.get("title") or "",
+                "account": item.get("source_account") or item.get("account") or "",
+            })
+
+        run_dir = _safe_run_dir(date_tag)
+        evidence_path = run_dir / "evidence_pack.json"
+        _save_json(evidence_path, {
+            "query": title or "素材篮证据包",
+            "generated_at": _now_iso(),
+            "total_candidates": len(top_chunks),
+            "top_chunks": top_chunks,
+        })
+
+        marked = _mark_articles_used(order, stage="cited")
+
+        prompt = ""
+        prompt_path = None
+        if title:
+            prompt_path = run_dir / ".prompt"
+            built = _run_script(
+                "build_prompt.py",
+                [
+                    "--date", date_tag,
+                    "--topic-title", title,
+                    "--persona", body.get("persona") or "industry-observer",
+                    "--framework", body.get("framework") or "清单型",
+                    "--dimensions", body.get("dimensions") or "叙事视角:问答体 + 类比域:电影 + 情绪基调:毒舌调侃",
+                    "--evidence", str(evidence_path.relative_to(LOOP_ROOT)),
+                    "--out", str(prompt_path.relative_to(LOOP_ROOT)),
+                ],
+                timeout=60,
+            )
+            if built["ok"] and prompt_path.exists():
+                prompt = prompt_path.read_text(encoding="utf-8")
+
+        return jsonify({
+            "ok": True,
+            "date": date_tag,
+            "runDir": str(run_dir.relative_to(LOOP_ROOT)),
+            "evidencePath": str(evidence_path.relative_to(LOOP_ROOT)),
+            "promptPath": str(prompt_path.relative_to(LOOP_ROOT)) if prompt else "",
+            "prompt": prompt,
+            "evidenceCount": len(top_chunks),
+            "marked": marked,
+            "missingUrl": missing_url,
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -2209,7 +2660,13 @@ def loop_publish():
                     break
                 except json.JSONDecodeError:
                     continue
-        return jsonify({"ok": True, "result": payload, "raw": res["stdout"][-1200:]})
+        # 发布回流：本次证据包里的来源文章自动标记 used_as_source
+        try:
+            marked = _mark_run_evidence_used(run_dir, stage="drafted")
+        except Exception:
+            marked = []
+        return jsonify({"ok": True, "result": payload, "marked": marked,
+                        "raw": res["stdout"][-1200:]})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

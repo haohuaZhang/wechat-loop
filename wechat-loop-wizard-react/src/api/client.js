@@ -443,6 +443,7 @@ export const api = {
     if (params.account && params.account !== "all") qs.set("ab", b64url(params.account))
     if (params.tag && params.tag !== "all") qs.set("tb", b64url(params.tag))
     if (params.status && params.status !== "all") qs.set("status", String(params.status))
+    if (params.quality) qs.set("quality", String(params.quality))
     if (params.collection && params.collection !== "all") {
       // 集合名可能含中文，同时给 plain 与 base64 两个别名，后端任取其一
       qs.set("collection", String(params.collection))
@@ -476,6 +477,7 @@ export const api = {
     if (params.status && params.status !== "all") qs.set("status", String(params.status))
     if (params.collection && params.collection !== "all") qs.set("collection", String(params.collection))
     if (params.sort) qs.set("sort", String(params.sort))
+    if (params.since) qs.set("since", String(params.since))
     if (Array.isArray(params.ids) && params.ids.length) qs.set("ids", params.ids.join(","))
     return `/api/kb/export?${qs.toString()}`
   },
@@ -1837,6 +1839,7 @@ export const api = {
       return list.map((c) => ({
         id: String(c.id ?? c.name ?? ""),
         name: c.name || String(c.id ?? ""),
+        parent: String(c.parent || ""),
         count: Number(c.count) || 0,
       }))
     } catch (err) {
@@ -1845,20 +1848,37 @@ export const api = {
   },
 
   /**
-   * 新建集合
-   * POST /api/kb/collections  body: {name} → {id,name}
+   * 新建集合（可挂在 parent 下）
+   * POST /api/kb/collections  body: {action:"create", name, parent} → {id,name,parent}
    */
-  async kbCreateCollection(name) {
+  async kbCreateCollection(name, parent = "") {
     const value = String(name || "").trim()
     if (!value) throw new Error("请填写集合名称")
-    if (USE_MOCK) return { id: value, name: value }
+    if (USE_MOCK) return { id: value, name: value, parent: parent || "" }
     try {
       return await fetchJSON("/api/kb/collections", {
         method: "POST",
-        body: JSON.stringify({ name: value }),
+        body: JSON.stringify({ action: "create", name: value, parent: parent || "" }),
       })
     } catch (err) {
       throw toError(err, "新建集合失败")
+    }
+  },
+
+  /**
+   * 集合树操作：rename / move / delete
+   * POST /api/kb/collections  body: {action, id, name?, parent?}
+   */
+  async kbCollectionOp(action, { id = "", name = "", parent = "" } = {}) {
+    if (!action) throw new Error("缺少集合操作类型")
+    if (USE_MOCK) return { ok: true, action, id, name, parent }
+    try {
+      return await fetchJSON("/api/kb/collections", {
+        method: "POST",
+        body: JSON.stringify({ action, id, name, parent }),
+      })
+    } catch (err) {
+      throw toError(err, "集合操作失败")
     }
   },
 
@@ -1903,7 +1923,7 @@ export const api = {
    * 站内搜索（标题/正文/标签）
    * GET /api/kb/search?q=&limit= → {items:[{id,title,account,publish_date,tags,score,snippet}], total, mode}
    */
-  async kbSearch({ q = "", limit = 20 } = {}) {
+  async kbSearch({ q = "", limit = 20, mode = "hybrid" } = {}) {
     const keyword = String(q || "").trim()
     if (!keyword) return { items: [], total: 0, mode: "empty" }
     if (USE_MOCK) {
@@ -1911,10 +1931,91 @@ export const api = {
       return { items: [], total: 0, mode: "mock" }
     }
     try {
-      const qs = new URLSearchParams({ q: keyword, limit: String(limit) })
+      const qs = new URLSearchParams({ q: keyword, limit: String(limit), mode })
       return await fetchJSON(`/api/kb/search?${qs.toString()}`)
     } catch (err) {
       throw toError(err, "搜索素材失败")
+    }
+  },
+
+  /**
+   * 主题聚类 + 覆盖度
+   * GET /api/kb/topics → {total, clusters:[{label,count,coverage,keywords,articles}], coverageRate}
+   */
+  async kbTopics({ limit = 8 } = {}) {
+    if (USE_MOCK) return { total: 0, clusters: [], coverageRate: 0, uncovered: 0 }
+    try {
+      return await fetchJSON(`/api/kb/topics?limit=${limit}`)
+    } catch (err) {
+      throw toError(err, "读取主题聚类失败")
+    }
+  },
+
+  /**
+   * 疑似重复分组（simhash + 余弦）
+   * GET /api/kb/duplicates → {pairs, groups:[{similarity, articles:[...]}]}
+   */
+  async kbDuplicates({ limit = 30 } = {}) {
+    if (USE_MOCK) return { pairs: 0, groups: [], total: 0 }
+    try {
+      return await fetchJSON(`/api/kb/duplicates?limit=${limit}`)
+    } catch (err) {
+      throw toError(err, "重复检测失败")
+    }
+  },
+
+  /**
+   * 划线摘录
+   * GET /api/kb/excerpts → {items:[{id,articleId,text,note,articleTitle}], count}
+   */
+  async kbExcerpts() {
+    if (USE_MOCK) return { items: [], count: 0 }
+    try {
+      return await fetchJSON("/api/kb/excerpts")
+    } catch (err) {
+      throw toError(err, "读取摘录失败")
+    }
+  },
+
+  /** POST /api/kb/excerpts  body: {articleId,text,note} */
+  async kbAddExcerpt({ articleId, text, note = "" } = {}) {
+    if (!articleId || !text) throw new Error("缺少文章或摘录内容")
+    if (USE_MOCK) return { id: "mock", articleId, text, note }
+    try {
+      return await fetchJSON("/api/kb/excerpts", {
+        method: "POST",
+        body: JSON.stringify({ articleId, text, note }),
+      })
+    } catch (err) {
+      throw toError(err, "保存摘录失败")
+    }
+  },
+
+  /** DELETE /api/kb/excerpts/<id> */
+  async kbDeleteExcerpt(id) {
+    if (!id) throw new Error("缺少摘录 id")
+    if (USE_MOCK) return { ok: true, deleted: id }
+    try {
+      return await fetchJSON(`/api/kb/excerpts/${encodeURIComponent(id)}`, { method: "DELETE" })
+    } catch (err) {
+      throw toError(err, "删除摘录失败")
+    }
+  },
+
+  /**
+   * 素材篮 → 证据包
+   * POST /api/kb/evidence  body: {title,excerptIds,articleIds,date}
+   */
+  async kbEvidence({ title = "", excerptIds = [], articleIds = [], date = "" } = {}) {
+    if (!excerptIds.length && !articleIds.length) throw new Error("素材篮是空的")
+    if (USE_MOCK) return { ok: true, evidenceCount: excerptIds.length + articleIds.length }
+    try {
+      return await fetchJSON("/api/kb/evidence", {
+        method: "POST",
+        body: JSON.stringify({ title, excerptIds, articleIds, date }),
+      })
+    } catch (err) {
+      throw toError(err, "生成证据包失败")
     }
   },
 }

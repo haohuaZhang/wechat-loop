@@ -59,6 +59,10 @@ python3 scripts/extract_exemplar.py --list >/dev/null 2>&1 \
 python3 scripts/wizard_server.py --help >/dev/null 2>&1 \
     && pass "wizard_server.py" || fail "wizard_server.py"
 
+# kb_analyze --help（相似去重 / 主题聚类 / 向量检索，纯标准库）
+python3 scripts/kb_analyze.py --help >/dev/null 2>&1 \
+    && pass "kb_analyze.py" || fail "kb_analyze.py"
+
 # ── 3. 上游依赖检查 ──────────────────────────────────────────
 echo ""
 echo "③ 上游仓库 & 依赖"

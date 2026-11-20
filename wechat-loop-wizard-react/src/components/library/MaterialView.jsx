@@ -132,6 +132,9 @@ export function MaterialView({
               <div className="flex items-center gap-1.5 pr-6">
                 <span className={cn("h-[7px] w-[7px] rounded-full", meta.dot)} />
                 <span className="text-[11px] text-[#6B6B6B]">{meta.label}</span>
+                {item.quality?.flags?.includes("thin") && (
+                  <span className="rounded border border-[#EAD9A8] bg-[#FFFBF0] px-1 text-[10px] leading-[16px] text-[#8A6D2F]">薄文</span>
+                )}
               </div>
               <div className="line-clamp-2 pr-4 text-[14px] font-medium leading-[1.55] text-[#1A1A1A]">
                 <Highlight text={item.title} keyword={keyword} />
@@ -201,8 +204,18 @@ export function MaterialView({
             />
             <span className={cn("h-[7px] w-[7px] rounded-full", meta.dot)} title={meta.label} />
             <div className="min-w-0">
-              <div className="truncate text-[14px] font-medium leading-[1.55] text-[#1A1A1A]" title={item.title}>
-                <Highlight text={item.title} keyword={keyword} />
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-[14px] font-medium leading-[1.55] text-[#1A1A1A]" title={item.title}>
+                  <Highlight text={item.title} keyword={keyword} />
+                </span>
+                {item.quality?.flags?.includes("thin") && (
+                  <span
+                    title={`正文约 ${item.words} 字，不足 300 字`}
+                    className="shrink-0 rounded border border-[#EAD9A8] bg-[#FFFBF0] px-1 text-[10px] leading-[16px] text-[#8A6D2F]"
+                  >
+                    薄文
+                  </span>
+                )}
               </div>
               {keyword && item.snippet && (
                 <div className="mt-1 line-clamp-2 border-l-2 border-[#E8D48A] bg-[#FCFCFB] px-2 py-0.5 text-[12px] leading-[1.65] text-[#4A4A47]">

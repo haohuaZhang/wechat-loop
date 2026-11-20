@@ -1,17 +1,18 @@
 import * as React from "react"
 import PropTypes from "prop-types"
-import { Bookmark, FolderTree, Plus, Check, Loader2 } from "lucide-react"
+import { Bookmark, FolderTree, Plus, Check, Loader2, Settings2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { TOKENS, KbButton, KbInput } from "./KbShared"
 
 const NONE = "__none__"
 
-function SideItem({ active, label, count, dot, avatar, onClick, title }) {
+function SideItem({ active, label, count, dot, avatar, onClick, title, indent = 0 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title || label}
+      style={indent ? { paddingLeft: 8 + indent * 12 } : undefined}
       className={cn(
         "relative flex h-8 w-full items-center gap-2 rounded-[5px] px-2 text-left text-[13px] transition-colors",
         active ? "bg-[#EEF0FB] font-medium text-[#4F5BD5]" : "text-[#3D3D3A] hover:bg-[#F5F5F3]",
@@ -41,24 +42,26 @@ SideItem.propTypes = {
   avatar: PropTypes.string,
   onClick: PropTypes.func,
   title: PropTypes.string,
+  indent: PropTypes.number,
 }
 
-function Group({ title, children }) {
+function Group({ title, children, action }) {
   return (
     <div className="mb-4">
       <div className="flex items-center justify-between px-2 pb-1.5 text-[11px] tracking-[0.06em] text-[#8E8E89]">
         <span>{title}</span>
+        {action}
       </div>
       <div className="flex flex-col gap-px">{children}</div>
     </div>
   )
 }
 
-Group.propTypes = { title: PropTypes.string.isRequired, children: PropTypes.node }
+Group.propTypes = { title: PropTypes.string.isRequired, children: PropTypes.node, action: PropTypes.node }
 
 export function LibrarySidebar({
   stats, collections, views, listTotal, filters, savedId,
-  onFilter, onApplyView, onSaveView, savingView,
+  onFilter, onApplyView, onSaveView, savingView, onManageCollections,
 }) {
   const [showSave, setShowSave] = React.useState(false)
   const [name, setName] = React.useState("")
@@ -69,6 +72,31 @@ export function LibrarySidebar({
   const byAccount = Array.isArray(stats?.byAccount) ? stats.byAccount : []
   const hasFilters = Boolean(filters.collection || filters.account || filters.status || filters.tag)
 
+  const tree = React.useMemo(() => {
+    const ids = new Set(collections.map((c) => c.id))
+    const byParent = new Map()
+    for (const c of collections) {
+      const parent = c.parent && ids.has(c.parent) ? c.parent : ""
+      if (!byParent.has(parent)) byParent.set(parent, [])
+      byParent.get(parent).push(c)
+    }
+    const out = []
+    const seen = new Set()
+    const walk = (parent, depth) => {
+      for (const c of byParent.get(parent) || []) {
+        if (seen.has(c.id)) continue
+        seen.add(c.id)
+        out.push({ c, depth })
+        walk(c.id, depth + 1)
+      }
+    }
+    walk("", 0)
+    for (const c of collections) {
+      if (!seen.has(c.id)) out.push({ c, depth: 0 })
+    }
+    return out
+  }, [collections])
+
   const submit = async () => {
     const value = name.trim()
     if (!value) return
@@ -78,7 +106,19 @@ export function LibrarySidebar({
 
   return (
     <aside className={cn("flex w-[220px] shrink-0 flex-col overflow-auto border-r px-2.5 pb-6 pt-3", TOKENS.line, TOKENS.panel)} aria-label="知识库筛选">
-      <Group title="集合">
+      <Group
+        title="集合"
+        action={(
+          <button
+            type="button"
+            onClick={onManageCollections}
+            title="管理集合（新建 / 重命名 / 删除）"
+            className="inline-flex items-center gap-1 rounded px-1 text-[10px] normal-case tracking-normal text-[#8E8E89] hover:bg-[#F5F5F3] hover:text-[#4F5BD5]"
+          >
+            <Settings2 className="h-3 w-3" /> 管理
+          </button>
+        )}
+      >
         <SideItem
           active={!filters.collection}
           label="全部素材"
@@ -93,13 +133,14 @@ export function LibrarySidebar({
           dot
           onClick={() => onFilter({ collection: NONE, savedId: "" })}
         />
-        {collections.map((c) => (
+        {tree.map(({ c, depth }) => (
           <SideItem
             key={c.id || c.name}
             active={filters.collection === c.name}
             label={c.name}
             count={Number(c.count) || 0}
             dot
+            indent={depth}
             onClick={() => onFilter({ collection: c.name, savedId: "" })}
           />
         ))}
@@ -195,4 +236,5 @@ LibrarySidebar.propTypes = {
   onApplyView: PropTypes.func.isRequired,
   onSaveView: PropTypes.func.isRequired,
   savingView: PropTypes.bool,
+  onManageCollections: PropTypes.func,
 }
